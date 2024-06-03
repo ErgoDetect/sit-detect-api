@@ -5,12 +5,14 @@ import numpy as np
 # Initialize MediaPipe Face Mesh and Face Detection once and reuse them
 mp_face_mesh = mp.solutions.face_mesh
 mp_face_detection = mp.solutions.face_detection
+mp_pose_landmark = mp.solutions.pose
 # mp_drawing = mp.solutions.drawing_utils
 
 # Initialize face mesh and face detection with specific configurations
 face_mesh = mp_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidence=0.5)
 refine_face_mesh = mp_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidence=0.5,refine_landmarks=True)
 face_detection = mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.5)
+pose_landmark = mp_pose_landmark.Pose(min_detection_confidence=0.5)
 
 # Drawing specifications
 # drawing_spec = mp_drawing.DrawingSpec(thickness=1, circle_radius=1)
@@ -99,12 +101,14 @@ def get_depth(image):
     iris = {}
     i=0
     if results.multi_face_landmarks:
-        for face_landmarks in results.multi_face_landmarks:
-            for idx, lm in enumerate(face_landmarks.landmark):
-                if idx in LEFT_IRIS:
-                    iris[i] = lm
-                    i=i+1
-        
+        # for face_landmarks in results.multi_face_landmarks:
+        #     for idx, lm in enumerate(face_landmarks.landmark):
+        #         if idx in LEFT_IRIS:
+        #             iris[i] = lm
+        #             i=i+1
+
+        iris[0] = results.multi_face_landmarks[0].landmark[LEFT_IRIS[0]]
+        iris[1] = results.multi_face_landmarks[0].landmark[LEFT_IRIS[1]]
         dx = iris[0].x - iris[1].x
         dX = 11.7
         
@@ -115,8 +119,22 @@ def get_depth(image):
         return dZ
     return None
 
+def get_shoulder_position(image):
+    image = cv2.cvtColor(cv2.flip(image, 1), cv2.COLOR_BGR2RGB)
+    results = pose_landmark.process(image)
+    if results.pose_landmarks:
+       shoulder_position = { "shoulder_left": results.pose_landmarks.landmark[12],
+                             "shoulder_right": results.pose_landmarks.landmark[11]}
+       return shoulder_position
+    return None
+
+
+
 # Example usage
 # image = cv2.imread("test.jpg")
+# shoulder_position = get_shoulder_position(image)
+# print("shoulder position:",shoulder_position)
+# print("shoulder position:",vars(shoulder_position))
 # img_h, img_w = image.shape[:2]
 # detph = get_depth(image)
 # print("detph:",vars(detph))

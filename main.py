@@ -8,7 +8,7 @@ import platform
 import os
 
 # Import optimized detection functions
-from api.detection import get_rotation_degree, get_head_position,get_depth
+from api.detection import get_rotation_degree, get_head_position,get_depth,get_shoulder_position
 
 app = FastAPI()
 
@@ -37,11 +37,13 @@ async def process_image(data: bytes) -> dict:
         head_position = await asyncio.to_thread(get_head_position, img_np)
         head_rotation_degree = await asyncio.to_thread(get_rotation_degree, img_np)
         depth = await asyncio.to_thread(get_depth, img_np)
+        shoulder_position = await asyncio.to_thread(get_shoulder_position, img_np)
 
         result = {
             "headPosition": head_position,
             "headRotationDegree": head_rotation_degree,
-            "depth":depth
+            "depth":depth,
+            "shoulderPosition": shoulder_position,
         }
         return result
     except Exception as e:
