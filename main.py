@@ -43,7 +43,8 @@ async def process_image(data: bytes) -> dict:
             "headPosition": head_position,
             "headRotationDegree": head_rotation_degree,
             "depth":depth,
-            "shoulderPosition": shoulder_position,
+            "shoulderLeftPosition": shoulder_position["shoulder_left"],
+            "shoulderRightPosition": shoulder_position["shoulder_right"]
         }
         return result
     except Exception as e:

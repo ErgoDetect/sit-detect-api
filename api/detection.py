@@ -123,17 +123,18 @@ def get_shoulder_position(image):
     image = cv2.cvtColor(cv2.flip(image, 1), cv2.COLOR_BGR2RGB)
     results = pose_landmark.process(image)
     if results.pose_landmarks:
-       shoulder_position = { "shoulder_left": results.pose_landmarks.landmark[12],
-                             "shoulder_right": results.pose_landmarks.landmark[11]}
+       shoulder_position = { "shoulder_left": [results.pose_landmarks.landmark[12].x,results.pose_landmarks.landmark[12].y,results.pose_landmarks.landmark[12].z],
+                             "shoulder_right": [results.pose_landmarks.landmark[11].x,results.pose_landmarks.landmark[11].y,results.pose_landmarks.landmark[11].z]}
        return shoulder_position
     return None
 
 
 
 # Example usage
-# image = cv2.imread("test.jpg")
-# shoulder_position = get_shoulder_position(image)
+image = cv2.imread("test.jpg")
+shoulder_position = get_shoulder_position(image)
 # print("shoulder position:",shoulder_position)
+print("shoulder position:",shoulder_position["shoulder_left"])
 # print("shoulder position:",vars(shoulder_position))
 # img_h, img_w = image.shape[:2]
 # detph = get_depth(image)
