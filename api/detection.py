@@ -5,14 +5,15 @@ import numpy as np
 # Initialize MediaPipe Face Mesh and Face Detection once and reuse them
 mp_face_mesh = mp.solutions.face_mesh
 mp_face_detection = mp.solutions.face_detection
-mp_drawing = mp.solutions.drawing_utils
+# mp_drawing = mp.solutions.drawing_utils
 
 # Initialize face mesh and face detection with specific configurations
 face_mesh = mp_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidence=0.5)
+refine_face_mesh = mp_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidence=0.5,refine_landmarks=True)
 face_detection = mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.5)
 
 # Drawing specifications
-drawing_spec = mp_drawing.DrawingSpec(thickness=1, circle_radius=1)
+# drawing_spec = mp_drawing.DrawingSpec(thickness=1, circle_radius=1)
 
 def get_rotation_degree(image):
     # Convert image to RGB and flip horizontally
@@ -88,9 +89,55 @@ def get_head_position(image):
     
     return None, None
 
-# Example usage:
-# image = cv2.imread("received_image.jpg")
+def get_depth(image):
+    image = cv2.cvtColor(cv2.flip(image, 1), cv2.COLOR_BGR2RGB)
+    img_h, img_w, _ = image.shape
+    results = refine_face_mesh.process(image)
+    LEFT_IRIS = [474, 476]
+    RIGHT_IRIS = [469, 471]
+
+    iris = {}
+    i=0
+    if results.multi_face_landmarks:
+        for face_landmarks in results.multi_face_landmarks:
+            for idx, lm in enumerate(face_landmarks.landmark):
+                if idx in LEFT_IRIS:
+                    iris[i] = lm
+                    i=i+1
+        
+        dx = iris[0].x - iris[1].x
+        dX = 11.7
+        
+        # normalizedFocaleX = 1.40625
+        # fx = min(img_w, img_h) * normalizedFocaleX
+        dZ = (1 * (dX / dx))/10.0
+        # dZ = (round(dZ,2))
+        return dZ
+    return None
+
+# Example usage
+# image = cv2.imread("test.jpg")
+# img_h, img_w = image.shape[:2]
+# detph = get_depth(image)
+# print("detph:",vars(detph))
+# print("detph:",detph)
+# print("detph:",detph[474].x)
+# print("detph:",detph[474].get)
+# print("detph:",type(detph[474]))
 # rotation_degrees = get_rotation_degree(image)
 # head_position = get_head_position(image)
 # print("Rotation Degrees:", rotation_degrees)
 # print("Head Position:", head_position)
+# point1 = np.array([detph[474].x*img_w,detph[474].y*img_h])
+# point2 = np.array([detph[475].x*img_w,detph[475].y*img_h])
+# point3 = np.array([detph[476].x*img_w,detph[476].y*img_h])
+# point4 = np.array([detph[477].x*img_w,detph[477].y*img_h])
+
+# point1 = np.array([detph[469].x*img_w,detph[469].y*img_h])
+# point2 = np.array([detph[470].x*img_w,detph[470].y*img_h])
+# point3 = np.array([detph[471].x*img_w,detph[471].y*img_h])
+# point4 = np.array([detph[472].x*img_w,detph[472].y*img_h])
+# cv2.line(image, np.int32(point1),np.int32(point3),(255,0,0),2)
+# cv2.polylines(image, np.int32([[point1,point2,point3,point4]]), True, (0,255,0), 1, cv2.LINE_AA)
+# cv2.imshow("image",image)
+# cv2.waitKey(0) 

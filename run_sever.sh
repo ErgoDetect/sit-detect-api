@@ -18,7 +18,7 @@ if [[ "$OSTYPE" == "linux-gnu"* || "$OSTYPE" == "darwin"* ]]; then
             exit 1
         fi
     fi
-    python server.py
+    uvicorn main:app --reload
     deactivate
 elif [[ "$OSTYPE" == "cygwin" || "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
     # Windows
@@ -32,7 +32,7 @@ elif [[ "$OSTYPE" == "cygwin" || "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]];
             exit 1
         fi
     fi
-    python server.py
+    uvicorn main:app --reload
     deactivate
 else
     echo "Unsupported OS: $OSTYPE"
