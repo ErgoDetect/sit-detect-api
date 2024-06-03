@@ -131,10 +131,10 @@ def get_shoulder_position(image):
 
 
 # Example usage
-image = cv2.imread("test.jpg")
-shoulder_position = get_shoulder_position(image)
+# image = cv2.imread("test.jpg")
+# shoulder_position = get_shoulder_position(image)
 # print("shoulder position:",shoulder_position)
-print("shoulder position:",shoulder_position["shoulder_left"])
+# print("shoulder position:",shoulder_position["shoulder_left"])
 # print("shoulder position:",vars(shoulder_position))
 # img_h, img_w = image.shape[:2]
 # detph = get_depth(image)

@@ -1,4 +1,4 @@
 @echo off
 call .\env\Scripts\activate
-uvicorn main:app
+uvicorn main:app --reload
 
