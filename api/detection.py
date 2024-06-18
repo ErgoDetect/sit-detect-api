@@ -1,6 +1,8 @@
 import cv2
 import mediapipe as mp
 import numpy as np
+import math
+
 
 # Initialize MediaPipe Face Mesh and Face Detection once and reuse them
 mp_face_mesh = mp.solutions.face_mesh
@@ -19,7 +21,8 @@ pose_landmark = mp_pose_landmark.Pose(min_detection_confidence=0.5)
 
 def get_rotation_degree(image):
     # Convert image to RGB and flip horizontally
-    image = cv2.cvtColor(cv2.flip(image, 1), cv2.COLOR_BGR2RGB)
+    # image = cv2.cvtColor(cv2.flip(image, 1), cv2.COLOR_BGR2RGB)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     
     # Process the image with face mesh
     results = face_mesh.process(image)
@@ -79,7 +82,8 @@ def get_rotation_degree(image):
 
 def get_head_position(image):
     # Convert image to RGB and flip horizontally
-    image = cv2.cvtColor(cv2.flip(image, 1), cv2.COLOR_BGR2RGB)
+    # image = cv2.cvtColor(cv2.flip(image, 1), cv2.COLOR_BGR2RGB)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     
     # Process the image with face detection
     results = face_detection.process(image)
@@ -92,7 +96,8 @@ def get_head_position(image):
     return None, None
 
 def get_depth(image):
-    image = cv2.cvtColor(cv2.flip(image, 1), cv2.COLOR_BGR2RGB)
+    # image = cv2.cvtColor(cv2.flip(image, 1), cv2.COLOR_BGR2RGB)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     img_h, img_w, _ = image.shape
     results = refine_face_mesh.process(image)
     LEFT_IRIS = [474, 476]
@@ -120,7 +125,7 @@ def get_depth(image):
     return None
 
 def get_shoulder_position(image):
-    image = cv2.cvtColor(cv2.flip(image, 1), cv2.COLOR_BGR2RGB)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     results = pose_landmark.process(image)
     if results.pose_landmarks:
        shoulder_position = { "shoulder_left": [results.pose_landmarks.landmark[12].x,results.pose_landmarks.landmark[12].y,results.pose_landmarks.landmark[12].z],
@@ -128,10 +133,60 @@ def get_shoulder_position(image):
        return shoulder_position
     return None
 
+def get_chin(image):
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    results = refine_face_mesh.process(image)
 
+    if results.multi_face_landmarks:
+        return results.multi_face_landmarks[0].landmark[152]
+    return None
+
+def get_blink_right(image):
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    results = refine_face_mesh.process(image)
+    if results.multi_face_landmarks:
+        dis_p2p6 = math.sqrt(pow(results.multi_face_landmarks[0].landmark[160].x-results.multi_face_landmarks[0].landmark[144].x,2)+pow(results.multi_face_landmarks[0].landmark[160].y-results.multi_face_landmarks[0].landmark[144].y,2))
+        dis_p3p5 = math.sqrt(pow(results.multi_face_landmarks[0].landmark[158].x-results.multi_face_landmarks[0].landmark[153].x,2)+pow(results.multi_face_landmarks[0].landmark[158].y-results.multi_face_landmarks[0].landmark[153].y,2))
+        dis_p1p4 = math.sqrt(pow(results.multi_face_landmarks[0].landmark[33].x-results.multi_face_landmarks[0].landmark[133].x,2)+pow(results.multi_face_landmarks[0].landmark[33].y-results.multi_face_landmarks[0].landmark[133].y,2))
+        eAR = (dis_p2p6+dis_p3p5)/dis_p1p4
+        return eAR
+    return None
+
+def get_blink_left(image):
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    results = refine_face_mesh.process(image)
+    if results.multi_face_landmarks:
+        dis_p2p6 = math.sqrt(pow(results.multi_face_landmarks[0].landmark[385].x-results.multi_face_landmarks[0].landmark[380].x,2)+pow(results.multi_face_landmarks[0].landmark[385].y-results.multi_face_landmarks[0].landmark[380].y,2))
+        dis_p3p5 = math.sqrt(pow(results.multi_face_landmarks[0].landmark[387].x-results.multi_face_landmarks[0].landmark[373].x,2)+pow(results.multi_face_landmarks[0].landmark[387].y-results.multi_face_landmarks[0].landmark[373].y,2))
+        dis_p1p4 = math.sqrt(pow(results.multi_face_landmarks[0].landmark[362].x-results.multi_face_landmarks[0].landmark[263].x,2)+pow(results.multi_face_landmarks[0].landmark[362].y-results.multi_face_landmarks[0].landmark[268].y,2))
+        eAR = (dis_p2p6+dis_p3p5)/dis_p1p4
+        return eAR
+    return None
+
+def get_feature(image):
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    results = pose_landmark.process(image)
+    if results.pose_landmarks:
+       
+       py = abs(results.pose_landmarks.landmark[8].x - results.pose_landmarks.landmark[7].x )
+       hl = (results.pose_landmarks.landmark[12].y+results.pose_landmarks.landmark[11].y)/2
+       return [py,hl]
+    
+    return None
+
+def get_test(image):
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    results = refine_face_mesh.process(image)
+    if results.multi_face_landmarks:
+        return [[results.multi_face_landmarks[0].landmark[385],results.multi_face_landmarks[0].landmark[380]],
+                [results.multi_face_landmarks[0].landmark[387],results.multi_face_landmarks[0].landmark[373]],
+                [results.multi_face_landmarks[0].landmark[362],results.multi_face_landmarks[0].landmark[263]]]
+    return None
 
 # Example usage
 # image = cv2.imread("test.jpg")
+# chin = get_chin(image)
+# print("feature:",chin)
 # shoulder_position = get_shoulder_position(image)
 # print("shoulder position:",shoulder_position)
 # print("shoulder position:",shoulder_position["shoulder_left"])
