@@ -2,16 +2,16 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import math
+mp_face_mesh = mp.solutions.face_mesh
+mp_face_detection = mp.solutions.face_detection
+mp_pose_landmark = mp.solutions.pose
+face_mesh = mp_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidence=0.5)
+refine_face_mesh = mp_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidence=0.5,refine_landmarks=True)
+face_detection = mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.5)
+pose_landmark = mp_pose_landmark.Pose(min_detection_confidence=0.5)
 
 class detection:
     def __init__(self, image):
-        mp_face_mesh = mp.solutions.face_mesh
-        mp_face_detection = mp.solutions.face_detection
-        mp_pose_landmark = mp.solutions.pose
-        face_mesh = mp_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidence=0.5)
-        refine_face_mesh = mp_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidence=0.5,refine_landmarks=True)
-        face_detection = mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.5)
-        pose_landmark = mp_pose_landmark.Pose(min_detection_confidence=0.5)
         self.image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
         self.face_mesh_results = face_mesh.process(image)
@@ -75,27 +75,47 @@ class detection:
         if self.face_detection_results.detections:
             for detection in self.face_detection_results.detections:
                 bbox = detection.location_data.relative_bounding_box
-                return bbox.xmin, bbox.ymin
+                return {"x":bbox.xmin, "y":bbox.ymin}
         
         return None, None
 
-    def get_depth(self):
+    def get_depth_left_iris(self):
         img_h, img_w, _ = self.image.shape
 
+        focal_length = 800
+        # focal_length = 500
+        real_iris_diameter = 1.17  
+        #cm
         LEFT_IRIS = [474, 476]
+
+        iris_left = {}
+        
+        if self.face_refine_face_mesh_results.multi_face_landmarks:
+            iris_left[0] = self.face_refine_face_mesh_results.multi_face_landmarks[0].landmark[LEFT_IRIS[0]]
+            iris_left[1] = self.face_refine_face_mesh_results.multi_face_landmarks[0].landmark[LEFT_IRIS[1]]
+            
+            image_iris_diameter_left = math.sqrt(pow(iris_left[0].x - iris_left[1].x,2)+pow(iris_left[0].y-iris_left[1].y,2))*img_w
+            return (focal_length * real_iris_diameter) / image_iris_diameter_left   
+        return None
+    
+    def get_depth_right_iris(self):
+        img_h, img_w, _ = self.image.shape
+
+        focal_length = 800
+        # focal_length = 500
+        real_iris_diameter = 1.17  
+        #cm
         RIGHT_IRIS = [469, 471]
 
-        iris = {}
-        i=0
+        iris_left = {}
+        iris_right = {}
+        
         if self.face_refine_face_mesh_results.multi_face_landmarks:
-
-            iris[0] = self.face_refine_face_mesh_results.multi_face_landmarks[0].landmark[LEFT_IRIS[0]]
-            iris[1] = self.face_refine_face_mesh_results.multi_face_landmarks[0].landmark[LEFT_IRIS[1]]
-            dx = iris[0].x - iris[1].x
-            dX = 11.7
+            iris_right[0] = self.face_refine_face_mesh_results.multi_face_landmarks[0].landmark[RIGHT_IRIS[0]]
+            iris_right[1] = self.face_refine_face_mesh_results.multi_face_landmarks[0].landmark[RIGHT_IRIS[1]]
             
-            dZ = (1 * (dX / dx))/10.0
-            return dZ
+            image_iris_diameter_right = math.sqrt(pow(iris_right[0].x - iris_right[1].x,2)+pow(iris_right[0].y-iris_right[1].y,2))*img_w
+            return (focal_length * real_iris_diameter) / image_iris_diameter_right 
         return None
 
     def get_shoulder_position(self):
@@ -138,6 +158,7 @@ class detection:
             hl = (results.pose_landmarks.landmark[12].y+results.pose_landmarks.landmark[11].y)/2
             return [py,hl]
         return None
+
 
 image = cv2.imread("test.jpg")
 test = detection(image)
