@@ -8,7 +8,6 @@ import platform
 import os
 import json
 
-# Import optimized detection functions
 from api.detection import detection
 
 app = FastAPI()
@@ -89,6 +88,7 @@ async def receive_video(websocket: WebSocket):
                     await websocket.send_json({"error": "Unexpected data format (not bytes)"})
                     await websocket.close()
                     break
+                
             # try:
             #     message = await websocket.receive_text()
             #     data = json.loads(message)
@@ -111,37 +111,3 @@ async def receive_video(websocket: WebSocket):
         logger.error(f"Error in WebSocket connection: {e}")
         if websocket.client_state == WebSocketState.CONNECTED:
             await websocket.close()
-
-# @app.websocket("/ws")
-# async def receive_video(websocket: WebSocket):
-#     await websocket.accept()
-#     logger.info("WebSocket connection accepted")
-
-#     try:
-#         while websocket.client_state == WebSocketState.CONNECTED:
-#             try:
-#                 data = await websocket.receive_bytes()
-
-#                 if isinstance(data, bytes):
-#                     result = await process_image(data)
-#                     await websocket.send_json(result)
-#                 else:
-#                     logger.error("Received data is not of type bytes")
-#                     await websocket.send_json({"error": "Unexpected data format (not bytes)"})
-#                     await websocket.close()
-#                     break
-
-#             except WebSocketDisconnect:
-#                 logger.info("WebSocket disconnected")
-#                 break
-
-#             except Exception as e:
-#                 logger.error(f"Error during WebSocket communication: {e}")
-#                 await websocket.send_json({"error": str(e)})
-#                 await websocket.close()
-#                 break
-
-#     except Exception as e:
-#         logger.error(f"Error in WebSocket connection: {e}")
-#         if websocket.client_state == WebSocketState.CONNECTED:
-#             await websocket.close()
