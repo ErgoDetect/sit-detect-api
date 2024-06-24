@@ -121,9 +121,11 @@ class detection:
     def get_shoulder_position(self):
         # results = pose_landmark.process(image)
         if self.pose_landmark_result.pose_landmarks:
-            shoulder_position = { "shoulder_left": [self.pose_landmark_result.pose_landmarks.landmark[12].x,self.pose_landmark_result.pose_landmarks.landmark[12].y,self.pose_landmark_result.pose_landmarks.landmark[12].z],
-                                "shoulder_right": [self.pose_landmark_result.pose_landmarks.landmark[11].x,self.pose_landmark_result.pose_landmarks.landmark[11].y,self.pose_landmark_result.pose_landmarks.landmark[11].z]}
-            return shoulder_position
+            shoulder_left = self.pose_landmark_result.pose_landmarks.landmark[12]
+            shoulder_right = self.pose_landmark_result.pose_landmarks.landmark[11]
+            shoulder_position = {"shoulder_left":{"x":shoulder_left.x,"y":shoulder_left.y,"z":shoulder_left.z},
+                                 "shoulder_right":{"x":shoulder_right.x,"y":shoulder_right.y,"z":shoulder_right.z}}
+            return shoulder_position 
         return None
 
     def get_chin(self):
@@ -156,7 +158,8 @@ class detection:
         if results.pose_landmarks:
             py = abs(results.pose_landmarks.landmark[8].x - results.pose_landmarks.landmark[7].x )
             hl = (results.pose_landmarks.landmark[12].y+results.pose_landmarks.landmark[11].y)/2
-            return [py,hl]
+            return {"py":py,
+                    "hl":hl}
         return None
 
 
