@@ -87,11 +87,12 @@ class detection:
 
     def get_shoulder_position(self):
         if self.pose_landmark_result.pose_landmarks:
-            shoulder_left = self.pose_landmark_result.pose_landmarks.landmark[12]
-            shoulder_right = self.pose_landmark_result.pose_landmarks.landmark[11]
-            shoulder_position = {"shoulder_left":{"x":shoulder_left.x,"y":shoulder_left.y,"z":shoulder_left.z},
-                                 "shoulder_right":{"x":shoulder_right.x,"y":shoulder_right.y,"z":shoulder_right.z}}
-            return shoulder_position 
+            landmarks = self.pose_landmark_result.pose_landmarks.landmark
+            shoulder_position = {
+                "shoulder_left": [landmarks[12].x, landmarks[12].y, landmarks[12].z],
+                "shoulder_right": [landmarks[11].x, landmarks[11].y, landmarks[11].z]
+            }
+            return shoulder_position
         return None
 
     def get_chin(self):
@@ -120,12 +121,11 @@ class detection:
         return None
 
     def get_feature(self):
-        results = self.pose_landmark_result
-        if results.pose_landmarks:
-            py = abs(results.pose_landmarks.landmark[8].x - results.pose_landmarks.landmark[7].x )
-            hl = (results.pose_landmarks.landmark[12].y+results.pose_landmarks.landmark[11].y)/2
-            return {"py":py,
-                    "hl":hl}
+        if self.pose_landmark_result.pose_landmarks:
+            landmarks = self.pose_landmark_result.pose_landmarks.landmark
+            py = abs(landmarks[8].x - landmarks[7].x)
+            hl = (landmarks[12].y + landmarks[11].y) / 2
+            return [py, hl]
         return None
 
 
