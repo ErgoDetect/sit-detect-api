@@ -31,9 +31,11 @@ async def process_image(data: bytes) -> dict:
 
         detection_result = detection(img_np)
         head_position = detection_result.get_head_position()
+        depth_left_iris = detection_result.get_depth_left_iris()
 
         result = {
-            "headPosition": head_position
+            "headPosition": head_position,
+            "depthLeftIris":depth_left_iris
         }
 
         return result
