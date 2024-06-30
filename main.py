@@ -25,7 +25,8 @@ if platform.system() == "Darwin":
 async def process_image(data: bytes) -> dict:
     """Process the received image data."""
     try:
-        nparr = np.frombuffer(data, np.uint8)
+        img_data = base64.b64decode(data)
+        nparr = np.frombuffer(img_data, np.uint8)
         img_np = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
         detection_result = detection(img_np)
