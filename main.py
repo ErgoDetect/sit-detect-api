@@ -56,9 +56,12 @@ async def receive_video(websocket: WebSocket):
                 message = await websocket.receive_text()
                 data = json.loads(message)
                 
-                frame_count = data['frameCount']
-                image_data = base64.b64decode(data['image'])
-                client_timestamp = data['timestamp']
+                frame_count = data.get('frameCount')
+                image_data = data.get('image')
+                if not image_data:
+                    raise ValueError("No image provided")
+                
+                client_timestamp = data.get('timestamp')
                 received_time = time.time() * 1000  # Current time in milliseconds
                 latency = received_time - client_timestamp
                 
