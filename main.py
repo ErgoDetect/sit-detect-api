@@ -7,6 +7,8 @@ import logging
 import platform
 import os
 import json
+import base64
+
 
 from api.detection import detection
 
@@ -28,10 +30,12 @@ if is_windows:
     # Windows specific environment settings (if any)
     pass
 
-async def process_image(frame_number: int, data: bytes) -> dict:
 # async def process_image(data: bytes) -> dict:
+# async def process_image(data: dict):
+async def process_image(data: str):
     try:
-        nparr = np.frombuffer(data, np.uint8)
+        img_data = base64.b64decode(data)
+        nparr = np.frombuffer(img_data, np.uint8)
         img_np = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
         # detection(img_np)
@@ -41,7 +45,6 @@ async def process_image(frame_number: int, data: bytes) -> dict:
         head_position = detection_result.get_head_position()
 
         result = {
-            "frame_number":frame_number,
             "headPosition":head_position
         }
         
@@ -77,26 +80,15 @@ async def receive_video(websocket: WebSocket):
 
     try:
         while websocket.client_state == WebSocketState.CONNECTED:
-            # try:
-            #     data = await websocket.receive_bytes()
-
-            #     if isinstance(data, bytes):
-            #         result = await process_image(data)
-            #         await websocket.send_json(result)
-            #     else:
-            #         logger.error("Received data is not of type bytes")
-            #         await websocket.send_json({"error": "Unexpected data format (not bytes)"})
-            #         await websocket.close()
-            #         break
-                
             try:
-                message = await websocket.receive_text()
-                data = json.loads(message)
+                data = await websocket.receive_json()
                 frame_number = data["frameNumber"]
-                # frame_data = data["frameData"].encode('latin1')
                 frame_data = data["frameData"]
-                result = await process_image(frame_number, frame_data)
-                await websocket.send_json(result)
+                
+                result = await process_image(frame_data)
+                await websocket.send_json({"frameNumber": frame_number, "result": result})
+                # print(result)
+
 
             except WebSocketDisconnect:
                 logger.info("WebSocket disconnected")
