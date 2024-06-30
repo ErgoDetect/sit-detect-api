@@ -2,13 +2,13 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.websockets import WebSocketState
 import numpy as np
 import cv2
-import asyncio
 import logging
 import platform
 import os
-import json
 import base64
-
+import json
+import time
+from datetime import datetime
 
 from api.detection import detection
 
@@ -18,52 +18,24 @@ app = FastAPI()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Check if running on macOS or Windows and adjust settings accordingly
-is_macos = platform.system() == "Darwin"
-is_windows = platform.system() == "Windows"
-
-if is_macos:
-    # macOS specific environment settings (if any)
+# Platform-specific settings
+if platform.system() == "Darwin":
     os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
-if is_windows:
-    # Windows specific environment settings (if any)
-    pass
-
-# async def process_image(data: bytes) -> dict:
-# async def process_image(data: dict):
-async def process_image(data: str):
+async def process_image(data: bytes) -> dict:
+    """Process the received image data."""
     try:
         img_data = base64.b64decode(data)
         nparr = np.frombuffer(img_data, np.uint8)
         img_np = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-        # detection(img_np)
-        # depth = await asyncio.to_thread(detection.get_depth)
-        # await asyncio.to_thread()
         detection_result = detection(img_np)
         head_position = detection_result.get_head_position()
 
         result = {
-            "headPosition":head_position
+            "headPosition": head_position
         }
-        
-        # detection = await asyncio.to_thread(detection,img_np)
-        
-        # head_position = await asyncio.to_thread(get_head_position, img_np)
-        # head_rotation_degree = await asyncio.to_thread(get_rotation_degree, img_np)
-        # depth = await asyncio.to_thread(get_depth, img_np)
-        # shoulder_position = await asyncio.to_thread(get_shoulder_position, img_np)
 
-        # result = {
-        #     "headPosition": head_position,
-        #     "headRotationDegree": head_rotation_degree,
-        #     "depth":depth,
-        #     "shoulderLeftPosition": shoulder_position["shoulder_left"],
-        #     "shoulderRightPosition": shoulder_position["shoulder_right"]
-        # }
-
-        
         return result
     except Exception as e:
         logger.error(f"Error processing image: {e}")
@@ -71,7 +43,7 @@ async def process_image(data: str):
 
 @app.get("/")
 def read_root():
-    return {"Hello": "World"}
+    return {"message": "Hello, World"}
 
 @app.websocket("/ws")
 async def receive_video(websocket: WebSocket):
@@ -81,14 +53,27 @@ async def receive_video(websocket: WebSocket):
     try:
         while websocket.client_state == WebSocketState.CONNECTED:
             try:
-                data = await websocket.receive_json()
-                frame_number = data["frameNumber"]
-                frame_data = data["frameData"]
+                message = await websocket.receive_text()
+                data = json.loads(message)
                 
-                result = await process_image(frame_data)
-                await websocket.send_json({"frameNumber": frame_number, "result": result})
-                # print(result)
+                frame_count = data.get('frameCount')
+                image_data = data.get('image')
+                if not image_data:
+                    raise ValueError("No image provided")
+                
+                client_timestamp = data.get('timestamp')
+                received_time = time.time() * 1000  # Current time in milliseconds
+                latency = received_time - client_timestamp
+                
+                logger.info(f"Received frame {frame_count} at {datetime.utcfromtimestamp(received_time / 1000).isoformat()} with latency {latency:.2f} ms")
 
+                result = await process_image(image_data)
+                result['frameCount'] = frame_count
+                result['latency'] = latency
+
+                logger.info(f"Sending frame: {result['frameCount']}")
+
+                await websocket.send_json(result)
 
             except WebSocketDisconnect:
                 logger.info("WebSocket disconnected")
