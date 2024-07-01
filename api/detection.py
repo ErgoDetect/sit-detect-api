@@ -71,6 +71,7 @@ class detection:
         
         return None, None, None
 
+    # show 
     def get_head_position(self):
         if self.face_detection_results.detections:
             for detection in self.face_detection_results.detections:
@@ -118,6 +119,7 @@ class detection:
             return (focal_length * real_iris_diameter) / image_iris_diameter_right 
         return None
 
+    # show 
     def get_shoulder_position(self):
         # results = pose_landmark.process(image)
         if self.pose_landmark_result.pose_landmarks:
