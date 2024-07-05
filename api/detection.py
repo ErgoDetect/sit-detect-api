@@ -76,7 +76,22 @@ class detection:
         if self.face_detection_results.detections:
             for detection in self.face_detection_results.detections:
                 bbox = detection.location_data.relative_bounding_box
-                return {"x":bbox.xmin, "y":bbox.ymin}
+                x = (bbox.width/2+bbox.xmin)
+                y = (bbox.height/2+bbox.ymin)
+                # x = bbox.width
+                # y = bbox.height
+                # x = bbox.xmin
+                # y = bbox.ymin
+                return {"x": x, "y":y}
+                # return {
+                #     "width":bbox.width,
+                #     "height":bbox.height,
+                #     "xmin" : bbox.xmin,
+                #     "ymin": bbox.ymin,
+                #     "result_x": (bbox.width/2+bbox.xmin),
+                #     "result_y": (bbox.height/2+bbox.ymin)
+                # }
+                # return detection
         
         return None, None
 
@@ -166,9 +181,38 @@ class detection:
 
 
 image = cv2.imread("test.jpg")
+height, width, channels = image.shape
 test = detection(image)
+head_position = test.get_head_position()
+# print(head_position['x'])
+# x_min = np.int32(head_position['xmin']*width)
+# x_max = np.int32(head_position['width']*width)
+# y_min = np.int32(head_position['ymin']*height)
+# y_max = np.int32(head_position['height']*height)
+# x_result = np.int32(head_position['result_x']*width)
+# y_result = np.int32(head_position['result_y']*height)
+# face_react=[np.int32(head_position['xmin']*width),np.int32(head_position['ymin']*height),
+#             np.int32(head_position['width']*width),np.int32(head_position['height']*height)]
+# draw = cv2.circle(image,(np.int32(head_position['x']*width),np.int32(head_position['y']*height)),1,(0,0,255), -1)
+# draw = cv2.rectangle(image, face_react, color=(255, 255, 255), thickness=2)
+# draw = cv2.rectangle(image, [x_min,y_min,x_max,y_max], color=(255, 255, 255), thickness=2)
+# draw = cv2.circle(image,[x_min,y_min],1,(0,0,255), -1)
+# draw = cv2.circle(image,[x_result,y_result],1,(0,0,255), -1)
 
+# tmp_x_min = np.int32(0.4*width)
+# tmp_x_max = np.int32(0.6*width)
+# tmp_y_min = np.int32(0.4*height)
+# tmp_y_max = np.int32(0.6*height)
+# draw = cv2.rectangle(image, [tmp_x_min,tmp_y_min,tmp_x_max,tmp_y_max], color=(255, 255, 255), thickness=2)
+# draw = cv2.rectangle(image, [tmp_x_min,tmp_y_min],[tmp_x_max,tmp_y_max], color=(255, 255, 255), thickness=2)
+# draw = cv2.circle(image,[tmp_x_min,tmp_y_min],1,(0,0,255), -1)
+# draw = cv2.circle(image,[tmp_x_max,tmp_y_max],1,(0,0,255), -1)
 
+# cv2.imshow('frame', draw) 
+# cv2.waitKey(0) 
+# cv2.destroyAllWindows() 
+
+    
 # print(" 1 : ",test.get_blink_left())
 # print(" 2 : ",test.get_blink_right())
 # print(" 3 : ",test.get_chin())
