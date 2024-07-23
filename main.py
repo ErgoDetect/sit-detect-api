@@ -61,26 +61,29 @@ async def receive_video(websocket: WebSocket):
         while websocket.client_state == WebSocketState.CONNECTED:
             try:
                 message = await websocket.receive_text()
-                data = json.loads(message)
+                # data = json.loads(message)
                 
-                frame_count = data.get('frameCount')
-                image_data = data.get('image')
-                if not image_data:
-                    raise ValueError("No image provided")
+                # frame_count = data.get('frameCount')
+                # image_data = data.get('image')
+                logger.info(f"Received message: {message}")
+                # if not image_data:
+                #     raise ValueError("No image provided")
+
+                # client_timestamp = data.get('timestamp')
+                # received_time = time.time() * 1000  # Current time in milliseconds
+                # latency = received_time - client_timestamp
                 
-                client_timestamp = data.get('timestamp')
-                received_time = time.time() * 1000  # Current time in milliseconds
-                latency = received_time - client_timestamp
-                
-                logger.info(f"Received frame {frame_count} at {datetime.utcfromtimestamp(received_time / 1000).isoformat()} with latency {latency:.2f} ms")
+                # logger.info(f"Received frame {frame_count} at {datetime.utcfromtimestamp(received_time / 1000).isoformat()} with latency {latency:.2f} ms")
 
-                result = await process_image(image_data)
-                result['frameCount'] = frame_count
-                result['latency'] = latency
+                # # Process the image and include landMarkData
+                # result = await process_image(image_data)
+                # result['frameCount'] = frame_count
+                # result['latency'] = latency
+                # result['landMarkData'] = land_mark_data  # Include landMarkData in result
 
-                logger.info(f"Sending frame: {result['frameCount']}")
+                # logger.info(f"Sending frame: {result['frameCount']}")
 
-                await websocket.send_json(result)
+                # await websocket.send_json(result)
 
             except WebSocketDisconnect:
                 logger.info("WebSocket disconnected")

@@ -180,10 +180,10 @@ class detection:
         return None
 
 
-image = cv2.imread("test.jpg")
-height, width, channels = image.shape
-test = detection(image)
-head_position = test.get_head_position()
+# image = cv2.imread("test.jpg")
+# height, width, channels = image.shape
+# test = detection(image)
+# head_position = test.get_head_position()
 # print(head_position['x'])
 # x_min = np.int32(head_position['xmin']*width)
 # x_max = np.int32(head_position['width']*width)
