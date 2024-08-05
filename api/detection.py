@@ -165,7 +165,7 @@ class detection:
         if results.multi_face_landmarks:
             dis_p2p6 = math.sqrt(pow(results.multi_face_landmarks[0].landmark[385].x-results.multi_face_landmarks[0].landmark[380].x,2)+pow(results.multi_face_landmarks[0].landmark[385].y-results.multi_face_landmarks[0].landmark[380].y,2))
             dis_p3p5 = math.sqrt(pow(results.multi_face_landmarks[0].landmark[387].x-results.multi_face_landmarks[0].landmark[373].x,2)+pow(results.multi_face_landmarks[0].landmark[387].y-results.multi_face_landmarks[0].landmark[373].y,2))
-            dis_p1p4 = math.sqrt(pow(results.multi_face_landmarks[0].landmark[362].x-results.multi_face_landmarks[0].landmark[263].x,2)+pow(results.multi_face_landmarks[0].landmark[362].y-results.multi_face_landmarks[0].landmark[268].y,2))
+            dis_p1p4 = math.sqrt(pow(results.multi_face_landmarks[0].landmark[362].x-results.multi_face_landmarks[0].landmark[263].x,2)+pow(results.multi_face_landmarks[0].landmark[362].y-results.multi_face_landmarks[0].landmark[263].y,2))
             eAR = (dis_p2p6+dis_p3p5)/dis_p1p4
             return eAR
         return None

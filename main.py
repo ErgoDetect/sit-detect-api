@@ -10,7 +10,7 @@ import json
 import time
 from datetime import datetime
 
-from api.detection import detection
+from api.procressData import processData
 
 app = FastAPI()
 
@@ -22,31 +22,7 @@ logger = logging.getLogger(__name__)
 if platform.system() == "Darwin":
     os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
-async def process_image(data: bytes) -> dict:
-    """Process the received image data."""
-    try:
-        img_data = base64.b64decode(data)
-        nparr = np.frombuffer(img_data, np.uint8)
-        img_np = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-        detection_result = detection(img_np)
-        head_position = detection_result.get_head_position()
-        depth_left_iris = detection_result.get_depth_left_iris()
-        depth_right_iris = detection_result.get_depth_right_iris()
-        shoulder_position = detection_result.get_shoulder_position()
-
-
-        result = {
-            "headPosition": head_position,
-            "depthLeftIris":depth_left_iris,
-            "depthRightIris":depth_right_iris,
-            "shoulderPosition":shoulder_position
-        }
-
-        return result
-    except Exception as e:
-        logger.error(f"Error processing image: {e}")
-        return {"error": f"Error processing image: {e}"}
 
 @app.get("/")
 def read_root():
@@ -61,13 +37,14 @@ async def receive_video(websocket: WebSocket):
         while websocket.client_state == WebSocketState.CONNECTED:
             try:
                 message = await websocket.receive_text()
-                # data = json.loads(message)
-                
                 # frame_count = data.get('frameCount')
-                # image_data = data.get('image')
-                logger.info(f"Received message: {message}")
-                # if not image_data:
-                #     raise ValueError("No image provided")
+                # logger.info(f"Received message: {message}")
+
+                objectData = json.loads(message)
+                procesData = processData(objectData['data'])
+                logger.info(f"Shoulder Position: {procesData.get_shoulder_position()}")
+                logger.info(f"Blink Right: {procesData.get_blink_right()}")
+                logger.info(f"Blink Left: {procesData.get_blink_left()}")
 
                 # client_timestamp = data.get('timestamp')
                 # received_time = time.time() * 1000  # Current time in milliseconds
