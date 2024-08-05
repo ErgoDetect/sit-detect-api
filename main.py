@@ -10,7 +10,6 @@ import json
 import time
 from datetime import datetime
 
-from api.detection import detection
 from api.procressData import processData
 
 app = FastAPI()
@@ -38,21 +37,14 @@ async def receive_video(websocket: WebSocket):
         while websocket.client_state == WebSocketState.CONNECTED:
             try:
                 message = await websocket.receive_text()
-                # data = json.loads(message)
-                
                 # frame_count = data.get('frameCount')
-                # image_data = data.get('image')
                 # logger.info(f"Received message: {message}")
 
                 objectData = json.loads(message)
-                # logger.info(f"Received message: {objectData['data']}")
                 procesData = processData(objectData['data'])
-                # procesData.get_shoulder_position()
                 logger.info(f"Shoulder Position: {procesData.get_shoulder_position()}")
                 logger.info(f"Blink Right: {procesData.get_blink_right()}")
                 logger.info(f"Blink Left: {procesData.get_blink_left()}")
-                # if not image_data:
-                #     raise ValueError("No image provided")
 
                 # client_timestamp = data.get('timestamp')
                 # received_time = time.time() * 1000  # Current time in milliseconds
