@@ -28,7 +28,7 @@ if platform.system() == "Darwin":
 def read_root():
     return {"message": "Hello, World"}
 
-@app.websocket("/ws")
+@app.websocket("/landmark-results")
 async def receive_video(websocket: WebSocket):
     await websocket.accept()
     logger.info("WebSocket connection accepted")
