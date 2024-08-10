@@ -2,6 +2,7 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import math
+import pickle
 mp_face_mesh = mp.solutions.face_mesh
 mp_face_detection = mp.solutions.face_detection
 mp_pose_landmark = mp.solutions.pose
@@ -9,6 +10,9 @@ face_mesh = mp_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_con
 refine_face_mesh = mp_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidence=0.5,refine_landmarks=True)
 face_detection = mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.5)
 pose_landmark = mp_pose_landmark.Pose(min_detection_confidence=0.5)
+
+with open("cameraMatrix.pkl", "rb") as f:
+    cameraMatrix = pickle.load(f)
 
 class detection:
     def __init__(self, image):
@@ -98,8 +102,8 @@ class detection:
     def get_depth_left_iris(self):
         img_h, img_w, _ = self.image.shape
 
-        focal_length = 800
-        # focal_length = 500
+        # focal_length = 800
+        focal_length = 900
         real_iris_diameter = 1.17  
         #cm
         LEFT_IRIS = [474, 476]
@@ -117,7 +121,7 @@ class detection:
     def get_depth_right_iris(self):
         img_h, img_w, _ = self.image.shape
 
-        focal_length = 800
+        focal_length = cameraMatrix[0][0]
         # focal_length = 500
         real_iris_diameter = 1.17  
         #cm
