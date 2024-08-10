@@ -1,5 +1,10 @@
 env/
 __pycache__/
+.DS_Store
 testCamera.py
 test.py
 test.jpg
+
+#calibration
+images
+calibrate_result
