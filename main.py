@@ -13,6 +13,7 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 from api.calibration import calibrate_camera
+from api.procressData import processData
 
 app = FastAPI()
 
@@ -157,9 +158,16 @@ async def receive_video(websocket: WebSocket):
                 message = await websocket.receive_text()
                 object_data = json.loads(message)
                 processed_data = processData(object_data['data'])
-                logger.info(f"Shoulder Position: {processed_data.get_shoulder_position()}")
-                logger.info(f"Blink Right: {processed_data.get_blink_right()}")
-                logger.info(f"Blink Left: {processed_data.get_blink_left()}")
+                result = {
+                    "shoulderPosition":processed_data.get_shoulder_position(),
+                    "blinkRight":processed_data.get_blink_right(),
+                    "blinkLeft":processed_data.get_blink_left(),
+                }
+                logger.info(f"Shoulder Position: {result["shoulderPosition"]}")
+                logger.info(f"Blink Right: {result["blinkRight"]}")
+                logger.info(f"Blink Left: {result["blinkLeft"]}")
+                
+                await websocket.send_json(json.dumps(result))
 
             except WebSocketDisconnect:
                 logger.info("WebSocket disconnected")

@@ -11,9 +11,6 @@ refine_face_mesh = mp_face_mesh.FaceMesh(min_detection_confidence=0.5, min_track
 face_detection = mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.5)
 pose_landmark = mp_pose_landmark.Pose(min_detection_confidence=0.5)
 
-with open("cameraMatrix.pkl", "rb") as f:
-    cameraMatrix = pickle.load(f)
-
 class detection:
     def __init__(self, image):
         self.image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -103,7 +100,7 @@ class detection:
         img_h, img_w, _ = self.image.shape
 
         # focal_length = 800
-        focal_length = 900
+        focal_length = 939
         real_iris_diameter = 1.17  
         #cm
         LEFT_IRIS = [474, 476]
@@ -121,7 +118,7 @@ class detection:
     def get_depth_right_iris(self):
         img_h, img_w, _ = self.image.shape
 
-        focal_length = cameraMatrix[0][0]
+        focal_length = 939
         # focal_length = 500
         real_iris_diameter = 1.17  
         #cm
