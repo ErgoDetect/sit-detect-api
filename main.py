@@ -13,6 +13,7 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 from api.calibration import calibrate_camera
+from api.procressData import processData
 
 app = FastAPI()
 
@@ -38,7 +39,6 @@ if platform.system() == "Darwin":
 
 # Directory to save images and results
 IMAGE_SAVE_DIR = Path("images")
-CALIBRATE_DIR = IMAGE_SAVE_DIR / "calibrate"
 RESULT_DIR = Path('calibrate_result')
 
 # Function to generate a sequential filename
@@ -73,32 +73,52 @@ async def save_image(file: UploadFile, index: int) -> Path:
         raise HTTPException(status_code=500, detail=f"Failed to process image: {e}")
     
 def calibrate_and_cleanup(image_paths):
-    # Perform camera calibration
-    calibration_file, mean_error = calibrate_camera(image_paths)
+    calibration_file = None
+    mean_error = None
 
-    if calibration_file is not None:
-        # Load the existing calibration data
-        with open(calibration_file, "r") as f:
-            calibration_data = json.load(f)
-        
-        # Add the mean error to the calibration data
-        calibration_data["mean_error"] = mean_error
+    try:
+        # Perform camera calibration
+        calibration_file, mean_error = calibrate_camera(image_paths)
 
-        # Save the updated calibration data
-        with open(calibration_file, "w") as f:
-            json.dump(calibration_data, f)
+        if calibration_file is not None:
+            calibration_file_path = RESULT_DIR / calibration_file
 
-        # Clean up the image directory
-        if IMAGE_SAVE_DIR.exists():
-            shutil.rmtree(IMAGE_SAVE_DIR)
-            logger.info(f"Deleted the directory: {IMAGE_SAVE_DIR}")
-        else:
-            logger.warning(f"Directory {IMAGE_SAVE_DIR} does not exist, nothing to delete.")
+            # Load the existing calibration data
+            try:
+                with calibration_file_path.open("r") as f:
+                    calibration_data = json.load(f)
+            except FileNotFoundError:
+                logger.error(f"Calibration file {calibration_file_path} not found.")
+                return None, None
 
-        return calibration_file, mean_error
-    else:
-        logger.error("Calibration failed.")
-        return None, None
+            # Add the mean error to the calibration data
+            calibration_data["mean_error"] = mean_error
+
+            # Save the updated calibration data
+            try:
+                with calibration_file_path.open("w") as f:
+                    json.dump(calibration_data, f)
+            except IOError as e:
+                logger.error(f"Failed to write to {calibration_file_path}: {e}")
+                return None, None
+
+    except Exception as e:
+        logger.error(f"Error during calibration: {e}")
+    
+    finally:
+        # Always clean up the directories, even if calibration fails
+        directories_to_delete = [CALIBRATE_DIR, IMAGE_SAVE_DIR, RESULT_DIR]
+        for directory in directories_to_delete:
+            if directory.exists() and directory.is_dir():
+                try:
+                    shutil.rmtree(directory)
+                    logger.info(f"Deleted the directory: {directory}")
+                except Exception as e:
+                    logger.error(f"Failed to delete directory {directory}: {e}")
+            else:
+                logger.warning(f"Directory {directory} does not exist or is not a directory, nothing to delete.")
+
+    return calibration_file, mean_error
 
 @app.post("/upload-images")
 async def upload_images(files: list[UploadFile]):
@@ -112,30 +132,6 @@ async def upload_images(files: list[UploadFile]):
         raise e
     except Exception as e:
         logger.error(f"Error in upload endpoint: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-@app.post("/trigger-calibration")
-async def trigger_calibration():
-    try:
-        logger.info("Starting camera calibration...")
-        image_paths = list(IMAGE_SAVE_DIR.glob('*.png'))
-        if not image_paths:
-            raise HTTPException(status_code=400, detail="No images found for calibration")
-        
-        # Perform calibration synchronously
-        calibration_file, mean_error = calibrate_and_cleanup(image_paths)
-
-        if calibration_file is not None:
-            logger.info("Camera calibration completed.")
-            return {
-                "message": "Camera calibration completed",
-                "calibration_file": str(calibration_file),
-                "mean_error": mean_error
-            }
-        else:
-            raise HTTPException(status_code=500, detail="Calibration failed")
-    except Exception as e:
-        logger.error(f"Error in calibration endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/download/{filename}")

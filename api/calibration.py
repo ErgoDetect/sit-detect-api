@@ -3,6 +3,7 @@ import cv2 as cv
 import json
 import logging
 from pathlib import Path
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -51,15 +52,15 @@ def calibrate_camera(image_paths, resolution=(1920, 1080)):
             corners2 = cv.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
             imgpoints.append(corners2)
 
-            # Draw and save the chessboard corners
-            cv.drawChessboardCorners(img, chessboardSize, corners2, ret)
-            cv.imwrite(str(output_dir / f'img{num}.png'), img)
-            logger.info(f"Image img{num}.png saved!")
-            num += 1
-
     if frameSize is not None and len(objpoints) > 0:
         # Calibrate the camera
         ret, cameraMatrix, dist, rvecs, tvecs = cv.calibrateCamera(objpoints, imgpoints, frameSize, None, None)
+
+        # Adjust focal length by dividing by 2 and flooring the result
+        cameraMatrix[0, 0] = math.floor(cameraMatrix[0, 0] / 2)  # Focal length in x direction
+        cameraMatrix[1, 1] = math.floor(cameraMatrix[1, 1] / 2)  # Focal length in y direction
+
+        logger.info(f"Adjusted focal length to: fx={cameraMatrix[0, 0]}, fy={cameraMatrix[1, 1]}")
 
         # Calculate the reprojection error
         mean_error = calculate_reprojection_error(objpoints, imgpoints, rvecs, tvecs, cameraMatrix, dist)
@@ -93,4 +94,3 @@ def calculate_reprojection_error(objpoints, imgpoints, rvecs, tvecs, cameraMatri
         error = cv.norm(imgpoints[i], imgpoints2, cv.NORM_L2) / len(imgpoints2)
         total_error += error
     return total_error / len(objpoints)
-
