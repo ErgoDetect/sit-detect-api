@@ -1,5 +1,5 @@
 import json
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, File, UploadFile, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect,      UploadFile, HTTPException
 from fastapi.websockets import WebSocketState
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -17,8 +17,7 @@ from api.procressData import processData
 
 app = FastAPI()
 
-# CORS settings
-origins = ["http://localhost:1212"]
+origins = ["http://localhost:1212","app://."]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
