@@ -17,10 +17,8 @@ from api.procressData import processData
 
 app = FastAPI()
 
-origins = [
-    "http://localhost:1212",
-]
-
+# CORS settings
+origins = ["http://localhost:1212"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -41,21 +39,22 @@ if platform.system() == "Darwin":
 IMAGE_SAVE_DIR = Path("images")
 RESULT_DIR = Path('calibrate_result')
 
-# Function to generate a sequential filename
+# Generate a sequential filename
 def generate_unique_filename(base_name: str) -> str:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return f"{base_name}_{timestamp}.png"
 
 async def save_image(file: UploadFile, index: int) -> Path:
     try:
+        # Read image data from file
         image_data = await file.read()
         unique_filename = generate_unique_filename(f"calibration_{index}")
         file_path = IMAGE_SAVE_DIR / unique_filename
 
-        # Ensure the images directory exists
+        # Ensure the directory exists
         IMAGE_SAVE_DIR.mkdir(parents=True, exist_ok=True)
 
-        # Save the uploaded image
+        # Save image asynchronously
         async with aiofiles.open(file_path, 'wb') as out_file:
             await out_file.write(image_data)
 
@@ -71,7 +70,7 @@ async def save_image(file: UploadFile, index: int) -> Path:
     except Exception as e:
         logger.error(f"Failed to save and process image: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to process image: {e}")
-    
+
 def calibrate_and_cleanup(image_paths):
     calibration_file = None
     mean_error = None
@@ -107,7 +106,7 @@ def calibrate_and_cleanup(image_paths):
     
     finally:
         # Always clean up the directories, even if calibration fails
-        directories_to_delete = [CALIBRATE_DIR, IMAGE_SAVE_DIR, RESULT_DIR]
+        directories_to_delete = [IMAGE_SAVE_DIR, RESULT_DIR]
         for directory in directories_to_delete:
             if directory.exists() and directory.is_dir():
                 try:
@@ -154,15 +153,15 @@ async def receive_video(websocket: WebSocket):
                 object_data = json.loads(message)
                 processed_data = processData(object_data['data'])
                 result = {
-                    "shoulderPosition":processed_data.get_shoulder_position(),
-                    "blinkRight":processed_data.get_blink_right(),
-                    "blinkLeft":processed_data.get_blink_left(),
+                    "shoulderPosition": processed_data.get_shoulder_position(),
+                    "blinkRight": processed_data.get_blink_right(),
+                    "blinkLeft": processed_data.get_blink_left(),
                 }
-                logger.info(f"Shoulder Position: {result["shoulderPosition"]}")
-                logger.info(f"Blink Right: {result["blinkRight"]}")
-                logger.info(f"Blink Left: {result["blinkLeft"]}")
-                
-                await websocket.send_json(json.dumps(result))
+                logger.info(f"Shoulder Position: {result['shoulderPosition']}")
+                logger.info(f"Blink Right: {result['blinkRight']}")
+                logger.info(f"Blink Left: {result['blinkLeft']}")
+
+                await websocket.send_json(result)
 
             except WebSocketDisconnect:
                 logger.info("WebSocket disconnected")
@@ -178,4 +177,3 @@ async def receive_video(websocket: WebSocket):
         logger.error(f"Error in WebSocket connection: {e}")
         if websocket.client_state == WebSocketState.CONNECTED:
             await websocket.close()
-
