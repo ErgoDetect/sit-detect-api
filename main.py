@@ -14,6 +14,8 @@ from pathlib import Path
 from datetime import datetime
 from api.calibration import calibrate_camera
 from api.procressData import processData
+import database.model as model
+from database.config import engine
 
 app = FastAPI()
 
@@ -33,6 +35,8 @@ logger = logging.getLogger(__name__)
 # Platform-specific settings
 if platform.system() == "Darwin":
     os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+    
+model.Base.metadata.create_all(bind=engine)
 
 # Directory to save images and results
 IMAGE_SAVE_DIR = Path("images")
