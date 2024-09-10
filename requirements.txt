@@ -37,3 +37,10 @@ ujson==5.10.0
 pydantic==2.7.2
 sqlalchemy==2.0.33
 psycopg2==2.9.9
+passlib==1.7.4
+bcrypt==4.2.0
+alembic==1.13.2
+google-auth==2.34.0
+google-auth-oauthlib==1.2.1
+python-dotenv-vault==0.6.4
+PyJWT==2.9.0
