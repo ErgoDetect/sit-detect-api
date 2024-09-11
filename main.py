@@ -1,27 +1,35 @@
-import json
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, File, UploadFile, HTTPException
-from fastapi.websockets import WebSocketState
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-import numpy as np
-import cv2
+import asyncio
 import logging
-import platform
 import os
-import aiofiles
-import shutil
-from pathlib import Path
-from datetime import datetime
-from api.calibration import calibrate_camera
-from api.procressData import processData
+import platform
+import json
+from typing import Dict
 
+from fastapi import FastAPI, Depends, HTTPException, Request, Response, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session
+
+from api.request_user import get_current_user
+from auth.auth import authenticate_user
+from auth.token import create_access_token, create_refresh_token, verify_token
+from database.database import engine, SessionLocal
+import database.model as model
+from database.schemas.UserEmail import EmailCreate
+from database.schemas.Login import Login
+from database.crud import create_user, get_user_by_email, delete_user
+from api.image_processing import upload_images, download_file
+from api.websocket_received import process_landmark_results
+from api.google_oauth import google_login, google_callback
+from api.storage import oauth_results
+
+# Initialize FastAPI app
 app = FastAPI()
 
-# CORS settings
-origins = ["http://localhost:1212"]
+# CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["http://localhost:1212"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -31,149 +39,129 @@ app.add_middleware(
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Platform-specific settings
-if platform.system() == "Darwin":
-    os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+# Create all tables
+model.Base.metadata.create_all(bind=engine)
 
-# Directory to save images and results
-IMAGE_SAVE_DIR = Path("images")
-RESULT_DIR = Path('calibrate_result')
-
-# Generate a sequential filename
-def generate_unique_filename(base_name: str) -> str:
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return f"{base_name}_{timestamp}.png"
-
-async def save_image(file: UploadFile, index: int) -> Path:
+# Dependency to get database session
+def get_db():
+    db = SessionLocal()
     try:
-        # Read image data from file
-        image_data = await file.read()
-        unique_filename = generate_unique_filename(f"calibration_{index}")
-        file_path = IMAGE_SAVE_DIR / unique_filename
-
-        # Ensure the directory exists
-        IMAGE_SAVE_DIR.mkdir(parents=True, exist_ok=True)
-
-        # Save image asynchronously
-        async with aiofiles.open(file_path, 'wb') as out_file:
-            await out_file.write(image_data)
-
-        # Process the image with OpenCV
-        np_arr = np.frombuffer(image_data, np.uint8)
-        img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-        if img is None:
-            raise ValueError("Unable to decode the image")
-
-        logger.info(f"Received image with shape: {img.shape}")
-        return file_path
-
-    except Exception as e:
-        logger.error(f"Failed to save and process image: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to process image: {e}")
-
-def calibrate_and_cleanup(image_paths):
-    calibration_file = None
-    mean_error = None
-
-    try:
-        # Perform camera calibration
-        calibration_file, mean_error = calibrate_camera(image_paths)
-
-        if calibration_file is not None:
-            calibration_file_path = RESULT_DIR / calibration_file
-
-            # Load the existing calibration data
-            try:
-                with calibration_file_path.open("r") as f:
-                    calibration_data = json.load(f)
-            except FileNotFoundError:
-                logger.error(f"Calibration file {calibration_file_path} not found.")
-                return None, None
-
-            # Add the mean error to the calibration data
-            calibration_data["mean_error"] = mean_error
-
-            # Save the updated calibration data
-            try:
-                with calibration_file_path.open("w") as f:
-                    json.dump(calibration_data, f)
-            except IOError as e:
-                logger.error(f"Failed to write to {calibration_file_path}: {e}")
-                return None, None
-
-    except Exception as e:
-        logger.error(f"Error during calibration: {e}")
-    
+        yield db
     finally:
-        # Always clean up the directories, even if calibration fails
-        directories_to_delete = [IMAGE_SAVE_DIR, RESULT_DIR]
-        for directory in directories_to_delete:
-            if directory.exists() and directory.is_dir():
-                try:
-                    shutil.rmtree(directory)
-                    logger.info(f"Deleted the directory: {directory}")
-                except Exception as e:
-                    logger.error(f"Failed to delete directory {directory}: {e}")
-            else:
-                logger.warning(f"Directory {directory} does not exist or is not a directory, nothing to delete.")
+        db.close()
 
-    return calibration_file, mean_error
+# Load environment variables and platform-specific settings
+def load_config():
+    from dotenv_vault import load_dotenv
+    load_dotenv()
+    if platform.system() == "Darwin":
+        os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+
+load_config()
+
+
+#* User Endpoints
+
+@app.get('/user/info/', response_model=Dict[str, str])
+async def get_user_info(current_user: str = Depends(get_current_user)):
+    return {"user": current_user}
+
+@app.delete("/user/{email}", status_code=204)
+def delete_user_DB(email: str, db: Session = Depends(get_db)):
+    try:
+        return delete_user(db, email)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting user: {e}")
+
+
+#* Email Endpoints
+
+@app.post("/signup/", status_code=201)
+def sign_up(user: EmailCreate, db: Session = Depends(get_db)):
+    if get_user_by_email(db, email=user.email):
+        raise HTTPException(status_code=400, detail="Email already registered")
+    return create_user(db, user)
+
+@app.post("/auth/login", response_model=Dict[str, str])
+def login(user_credentials: Login, response: Response, db: Session = Depends(get_db)):
+    user = authenticate_user(db, user_credentials.email, user_credentials.password)
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid credentials")
+
+    access_token = create_access_token({"sub": user_credentials.email})
+    refresh_token = create_refresh_token({"sub": user_credentials.email})
+
+    response.set_cookie(key="access_token", value=access_token, httponly=True, secure=False, samesite="lax", path="/")
+    response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=False, samesite="lax", path="/")
+    
+    return {"message": "Tokens set in cookies"}
+
+#* Token Endpoints
+
+@app.post("/auth/refresh", response_model=Dict[str, str])
+def refresh_token(refresh_token: str):
+    payload = verify_token(refresh_token)
+    email = payload.get("sub")
+    if not email:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+    access_token = create_access_token({"sub": email})
+    return {"access_token": access_token, "token_type": "bearer"}
+
+#* Google Endpoints
+
+@app.get("/auth/google")
+async def login_with_google():
+    return await google_login()
+
+@app.get("/auth/google/callback")
+async def callback_from_google(request: Request, db: Session = Depends(get_db)):
+    return await google_callback(request, db)
+
+@app.get("/auth/google/set-cookies")
+async def set_cookies(response: Response):
+    user = oauth_results.get('user')
+    if not user or 'user_email' not in user:
+        return {"error": "User email not found in results"}
+
+    user_email = user['user_email']
+    access_token = create_access_token({"sub": user_email})
+    refresh_token = create_refresh_token({"sub": user_email})
+
+    response.set_cookie(key="access_token", value=access_token, httponly=True, secure=False, samesite="lax", path="/")
+    response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=False, samesite="lax", path="/")
+    
+    oauth_results.clear()
+
+    logger.debug(f"Cookies set: access_token={access_token}, refresh_token={refresh_token}")
+    return {"message": "Cookies set successfully"}
+
+@app.get("/auth/google/sse")
+async def google_sse():
+    async def event_generator():
+        while 'user' not in oauth_results:
+            await asyncio.sleep(1)
+            yield ": keep-alive\n\n"
+        
+        result = oauth_results
+        if result:
+            yield f"data: {json.dumps(result)}\n\n"
+        else:
+            logger.error("No 'user' found in OAuth results.")
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+#* Core Logic Endpoints
 
 @app.post("/upload-images")
-async def upload_images(files: list[UploadFile]):
-    try:
-        file_paths = []
-        for index, file in enumerate(files):
-            file_path = await save_image(file, index)
-            file_paths.append(file_path)
-        return {"message": "Images saved successfully", "file_paths": [str(path) for path in file_paths]}
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        logger.error(f"Error in upload endpoint: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+async def handle_upload_images(files: list):
+    return await upload_images(files)
 
 @app.get("/download/{filename}")
-async def download_file(filename: str):
-    file_path = RESULT_DIR / filename
-    if file_path.exists() and file_path.is_file():
-        return FileResponse(path=file_path, filename=filename)
-    else:
-        raise HTTPException(status_code=404, detail="File not found")
+async def handle_download_file(filename: str):
+    return download_file(filename)
 
 @app.websocket("/landmark-results")
-async def receive_video(websocket: WebSocket):
-    await websocket.accept()
-    logger.info("WebSocket connection accepted")
-
-    try:
-        while websocket.client_state == WebSocketState.CONNECTED:
-            try:
-                message = await websocket.receive_text()
-                object_data = json.loads(message)
-                processed_data = processData(object_data['data'])
-                result = {
-                    "shoulderPosition": processed_data.get_shoulder_position(),
-                    "blinkRight": processed_data.get_blink_right(),
-                    "blinkLeft": processed_data.get_blink_left(),
-                }
-                logger.info(f"Shoulder Position: {result['shoulderPosition']}")
-                logger.info(f"Blink Right: {result['blinkRight']}")
-                logger.info(f"Blink Left: {result['blinkLeft']}")
-
-                await websocket.send_json(result)
-
-            except WebSocketDisconnect:
-                logger.info("WebSocket disconnected")
-                break
-
-            except Exception as e:
-                logger.error(f"Error during WebSocket communication: {e}")
-                await websocket.send_json({"error": str(e)})
-                await websocket.close()
-                break
-
-    except Exception as e:
-        logger.error(f"Error in WebSocket connection: {e}")
-        if websocket.client_state == WebSocketState.CONNECTED:
-            await websocket.close()
+async def handle_landmark_results(websocket: WebSocket):
+    await process_landmark_results(websocket)
