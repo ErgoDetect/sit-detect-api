@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request, Depends, Response
+from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from google_auth_oauthlib.flow import Flow
@@ -41,7 +41,6 @@ flow = Flow.from_client_config(
 )
 
 #* Google OAuth: Step 1 - Initiate Google OAuth Flow
-@app.get("/auth/google")
 async def google_login():
     try:
         authorization_url, state = flow.authorization_url(
@@ -52,7 +51,6 @@ async def google_login():
         # Save state in the oauth_results store for later verification
         oauth_results['state'] = state
         
-        logger.info(f"Opening browser for Google login: {authorization_url}")
         return JSONResponse(content={"url": authorization_url})
 
     except Exception as e:
@@ -60,7 +58,7 @@ async def google_login():
         raise HTTPException(status_code=500, detail="An error occurred during Google login initiation.")
 
 #* Google OAuth: Step 2 - Callback Route for Google OAuth
-async def google_callback(request: Request, db: Session = Depends(get_db),response: Response = Response()):
+async def google_callback(request: Request, db: Session = Depends(get_db)):
     code = request.query_params.get("code")
     state = request.query_params.get("state")
 
@@ -75,31 +73,20 @@ async def google_callback(request: Request, db: Session = Depends(get_db),respon
         flow.fetch_token(code=code)
         credentials = flow.credentials
         
-        
-        
         # Get user info from Google
         session = flow.authorized_session()
         user_info = session.get("https://www.googleapis.com/oauth2/v1/userinfo").json()
 
-        logger.info(f"User info retrieved from Google: {user_info}")
 
-        # Ensure `db` is a SQLAlchemy session object here
         existing_user = get_user_by_email(db, email=user_info['email'])
         
         if not existing_user:
             # Create a new user in the database
             create_user_google(db, user_id=user_info['id'], user_email=user_info['email'])
             
-        access_token = credentials.token
-        refresh_token = credentials.refresh_token
-            
-        response.set_cookie(key="access_token", value=access_token, httponly=True, secure=False, samesite="Lax",path="/")
-        response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=False, samesite="Lax",path="/")
-
-        
-        # Update oauth_results after user creation/verification
         oauth_results['user'] = {
             'user_id': user_info['id'],
+            'user_email': user_info['email'],
             'success': True,
         }
 
