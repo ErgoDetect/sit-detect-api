@@ -9,10 +9,11 @@ async def get_current_user(request: Request):
         raise HTTPException(status_code=401, detail="No access token provided")
     try:
         payload = verify_token(token)
-        email = payload.get("sub")
-        if not email:
+        user_id = payload.get("sub")
+        email = payload.get("email")
+        if not user_id & email:
             raise HTTPException(status_code=401, detail="Invalid token payload")
-        return email
+        return user_id
     except HTTPException:
         raise
     except Exception as e:

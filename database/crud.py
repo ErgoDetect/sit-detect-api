@@ -1,7 +1,8 @@
 from fastapi import HTTPException
+from pydantic import EmailStr
 from sqlalchemy.orm import Session
 from .model import User
-from .schemas.UserEmail import EmailCreate
+
 import random
 import string
 from auth.auth_utils import hash_password
@@ -17,21 +18,21 @@ def generate_unique_user_id(length=21):
 
 
 #! Create
-def create_user(db: Session, user: User):
+def create_user(db: Session, email:EmailStr,password:str,display_name:str):
     """Create a new user with a unique user ID."""
     # Generate a unique user_id
     while True:
         user_id = generate_unique_user_id()
         if not db.query(User).filter(User.user_id == user_id).first():
             break
-    hashed_password = hash_password(user.password)
+    hashed_password = hash_password(password)
 
     # Create the user instance
     db_user = User(
         user_id=user_id,
-        email=user.email,
+        email=email,
         password= hashed_password,
-        display_name=user.display_name,
+        display_name=display_name,
         sign_up_method='email',
         
     )
@@ -43,7 +44,7 @@ def create_user(db: Session, user: User):
     return {"message": "User created successfully"}
 
 
-def create_user_google(db: Session, user_id:str,user_email: EmailCreate) -> User:
+def create_user_google(db: Session, user_id:str,user_email: EmailStr) :
     db_user = User(
         user_id=user_id,
         email=user_email,
@@ -57,7 +58,7 @@ def create_user_google(db: Session, user_id:str,user_email: EmailCreate) -> User
     db.refresh(db_user)  # Refresh the instance to include the new primary key (user_id)
     return {"message": "User created successfully"}
 
-def verify_user_email(db: Session, email: str):
+def verify_user_email(db: Session, email: EmailStr):
     user = db.query(User).filter(User.email == email).first()
     if user:
         user.verified = True
@@ -65,7 +66,7 @@ def verify_user_email(db: Session, email: str):
         return user
     return None
 
-def get_user_by_email(db: Session, email: str) -> User:
+def get_user_by_email(db: Session, email: EmailStr) -> User:
     return db.query(User).filter(User.email == email).first()
 
 # Get a user by ID
