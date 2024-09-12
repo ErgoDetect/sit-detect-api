@@ -38,7 +38,7 @@ async def save_image(file: UploadFile, index: int) -> Path:
         raise HTTPException(status_code=500, detail=f"Failed to process image: {e}")
 
 # Upload images
-async def upload_images(files: list[UploadFile]):
+async def receive_upload_images(files: list[UploadFile]):
     try:
         file_paths = [await save_image(file, index) for index, file in enumerate(files)]
         return {"message": "Images saved successfully", "file_paths": [str(path) for path in file_paths]}

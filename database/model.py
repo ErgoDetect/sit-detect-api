@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, ForeignKey,Boolean
+import datetime
+from sqlalchemy import Column, DateTime, Integer, String, ForeignKey,Boolean
 from sqlalchemy.orm import relationship
 from database.database import Base
 
@@ -12,14 +13,15 @@ class User(Base):
     sign_up_method = Column(String(50), nullable=True)
     verified = Column(Boolean, default=False)
     
-    tokens = relationship("OAuthToken", back_populates="user")
+    session = relationship("UserSession", back_populates="user")
 
-class OAuthToken(Base):
-    __tablename__ = 'oauth_tokens'
+
+class UserSession(Base):
+    __tablename__ = 'user_sessions'
     
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String(100), ForeignKey('users.user_id'), nullable=False)
-    refresh_token = Column(String(100), unique=True, index=True)
-    expires_in = Column(Integer)
-
-    user = relationship("User", back_populates="tokens")
+    user_id = Column(String(21), ForeignKey('users.user_id'), primary_key=True)
+    session_id = Column(String(100), unique=True, nullable=False)  
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)  
+    expires_at = Column(DateTime, nullable=False)  
+    
+    user = relationship("User", back_populates="session")
