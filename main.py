@@ -23,15 +23,9 @@ from api.websocket_received import process_landmark_results
 from api.google_oauth import google_login, google_callback
 from api.storage import oauth_results
 from database.schemas.User import LoginRequest
+from dotenv_vault import load_dotenv
 
-def load_config():
-    from dotenv_vault import load_dotenv
-    load_dotenv()
-    if platform.system() == "Darwin":
-        os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
-
-load_config()
-
+# load_dotenv()
 # Initialize FastAPI app
 app = FastAPI()
 

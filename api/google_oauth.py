@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi import FastAPI, HTTPException, Request, Depends, logger
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from google_auth_oauthlib.flow import Flow
@@ -8,12 +8,18 @@ from api.storage import oauth_results
 from database.crud import create_user_google, get_user_by_email
 from database.database import get_db
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Set up environment variables for OAuth 2.0 flow
 os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"  # Allow HTTP (for testing purposes)
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 REDIRECT_URI = "http://localhost:8000/auth/google/callback/"
+
+logger.info(f"GOOGLE_CLIENT_ID: {GOOGLE_CLIENT_ID}")
+logger.info(f"GOOGLE_CLIENT_SECRET: {GOOGLE_CLIENT_SECRET}")
 
 # OAuth 2.0 flow configuration
 flow = Flow.from_client_config(
