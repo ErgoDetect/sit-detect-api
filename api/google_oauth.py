@@ -8,12 +8,6 @@ from api.storage import oauth_results
 from database.crud import create_user_google, get_user_by_email
 from database.database import get_db
 
-app = FastAPI()
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 # Set up environment variables for OAuth 2.0 flow
 os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"  # Allow HTTP (for testing purposes)
 

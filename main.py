@@ -24,6 +24,14 @@ from api.google_oauth import google_login, google_callback
 from api.storage import oauth_results
 from database.schemas.User import LoginRequest
 
+def load_config():
+    from dotenv_vault import load_dotenv
+    load_dotenv()
+    if platform.system() == "Darwin":
+        os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+
+load_config()
+
 # Initialize FastAPI app
 app = FastAPI()
 
@@ -54,13 +62,7 @@ def get_db():
         db.close()
 
 # Load environment variables and platform-specific settings
-def load_config():
-    from dotenv_vault import load_dotenv
-    load_dotenv()
-    if platform.system() == "Darwin":
-        os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
-load_config()
 
 # custom api document
 
