@@ -22,14 +22,17 @@ from api.image_processing import receive_upload_images, download_file
 from api.websocket_received import process_landmark_results
 from api.google_oauth import google_login, google_callback
 from api.storage import oauth_results
+from database.schemas.User import LoginRequest
 
 # Initialize FastAPI app
 app = FastAPI()
 
+origins = ["http://localhost:1212"]
+
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -117,8 +120,13 @@ def sign_up(email:EmailStr,password:str ,display_name:str , db: Session = Depend
     return {"message": "User created successfully"}
 
 @app.post("/auth/login/", response_model=Dict[str, str])
-def login( response: Response,email:EmailStr,password:str , db: Session = Depends(get_db)):
-    user = authenticate_user(db, email,password)
+def login(
+    response: Response,
+    login_data: LoginRequest,  # Expecting data in the request body
+    db: Session = Depends(get_db)
+):
+    # Use login_data.email and login_data.password here
+    user = authenticate_user(db, login_data.email, login_data.password)
     if not user:
         raise HTTPException(status_code=400, detail="Invalid credentials")
 
