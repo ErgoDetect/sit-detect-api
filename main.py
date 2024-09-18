@@ -5,6 +5,7 @@ import platform
 import json
 from typing import Dict, List
 
+from dotenv import dotenv_values
 from fastapi import Body, FastAPI, Depends, HTTPException, Request, Response, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -25,7 +26,25 @@ from api.storage import oauth_results
 from database.schemas.User import LoginRequest
 from dotenv_vault import load_dotenv
 
-# load_dotenv()
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+#load .env
+script_dir = os.path.dirname(os.path.abspath(__file__))
+logger.info(f"Script directory: {script_dir}")
+
+env_path = os.path.join(script_dir, '.env')
+logger.info(f".env file path: {env_path}")
+
+load_dotenv(dotenv_path=env_path)
+logger.info("Loaded .env file")
+
+env_variables = dotenv_values(env_path)
+
+for key in env_variables:
+    logger.info(f"Loaded key: {key}")
+
+
 # Initialize FastAPI app
 app = FastAPI()
 
@@ -40,9 +59,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # Create all tables
 model.Base.metadata.create_all(bind=engine)
