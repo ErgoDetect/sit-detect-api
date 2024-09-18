@@ -6,7 +6,7 @@ import json
 from typing import Dict, List
 
 from dotenv import dotenv_values
-from fastapi import Body, FastAPI, Depends, HTTPException, Request, Response, WebSocket
+from fastapi import Body, FastAPI, Depends, HTTPException, Request, Response, WebSocket , WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.openapi.utils import get_openapi
@@ -213,8 +213,55 @@ async def upload_images(files: List,current_user:str=Depends(get_current_user)):
 async def download_file(filename: str,current_user:str=Depends(get_current_user)):
     return download_file(filename)
 
+
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def send_message(self, message: str, websocket: WebSocket):
+        await websocket.send_text(message)
+
+# Instance of the connection manager
+manager = ConnectionManager()
+
 @app.websocket("/landmark/results/")
 async def landmark_results(websocket: WebSocket):
-    await process_landmark_results(websocket)
+    await manager.connect(websocket)
+
+    response_counter = 0
+    saved_values = []
+
+    try:
+        while True:
+            # Receive data from the client
+            message = await websocket.receive_text()
+            object_data = json.loads(message)
+            # object_data2 = json.loads(object_data)
+            # print(object_data2['data'])
+            processed_data = process_landmark_results(object_data['data'])
+            # Process the first 5 messages
+            
+            if response_counter < 5:
+                saved_values.append(processed_data)
+                response_counter += 1
+                print(f"Response {response_counter} saved: {processed_data}", websocket)
+
+            # After 5 messages are saved, continue processing if needed
+            if response_counter == 5:
+                print(f"First 5 values saved: {saved_values}", websocket)
+                response_counter += 1
+                # Optionally, stop saving further values but keep the connection open for further interaction
+
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+        print(f"Connection closed. Saved values: {saved_values}")
 
 
+    
