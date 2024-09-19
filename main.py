@@ -1,7 +1,7 @@
 import asyncio
+from datetime import  datetime,timedelta,timezone
 import logging
 import os
-import platform
 import json
 from typing import Dict, List
 
@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from api.request_user import get_current_user
 from auth.auth import authenticate_user
-from auth.token import create_access_token, create_refresh_token, verify_token
+from auth.token import ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS, UTC_PLUS_7,create_access_token, create_refresh_token, get_expiration_times,  verify_token
 from database.database import engine, SessionLocal
 import database.model as model
 from database.crud import create_user, get_user_by_email, delete_user
@@ -29,6 +29,9 @@ from dotenv_vault import load_dotenv
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+
 #load .env
 script_dir = os.path.dirname(os.path.abspath(__file__))
 logger.info(f"Script directory: {script_dir}")
@@ -134,19 +137,44 @@ def sign_up(email:EmailStr,password:str ,display_name:str , db: Session = Depend
 @app.post("/auth/login/", response_model=Dict[str, str])
 def login(
     response: Response,
-    login_data: LoginRequest,  # Expecting data in the request body
+    login_data: LoginRequest,
     db: Session = Depends(get_db)
 ):
-    # Use login_data.email and login_data.password here
+    # Authenticate the user
     user = authenticate_user(db, login_data.email, login_data.password)
     if not user:
         raise HTTPException(status_code=400, detail="Invalid credentials")
 
+    # Create tokens
     access_token = create_access_token({"sub": user.user_id, "email": user.email})
     refresh_token = create_refresh_token({"sub": user.user_id})
 
-    response.set_cookie(key="access_token", value=access_token, httponly=True, secure=False, samesite="lax", path="/")
-    response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=False, samesite="lax", path="/")
+    access_token_expires_utc, refresh_token_expires_utc = get_expiration_times(
+        UTC_PLUS_7,
+        ACCESS_TOKEN_EXPIRE_MINUTES, 
+        REFRESH_TOKEN_EXPIRE_DAYS
+    )
+
+    # Set cookies with formatted expiration dates
+    response.set_cookie(
+        key="access_token", 
+        value=access_token, 
+        httponly=True, 
+        secure=False, 
+        samesite="lax", 
+        path="/", 
+        expires=access_token_expires_utc,
+        
+    )
+    response.set_cookie(
+        key="refresh_token", 
+        value=refresh_token, 
+        httponly=True, 
+        secure=False, 
+        samesite="lax", 
+        path="/", 
+        expires=refresh_token_expires_utc
+    )
 
     return {"message": "Login Success"}
 
@@ -180,12 +208,32 @@ async def set_cookies(response: Response):
     access_token = create_access_token({"sub": user_email})
     refresh_token = create_refresh_token({"sub": user_email})
 
-    response.set_cookie(key="access_token", value=access_token, httponly=True, secure=False, samesite="lax", path="/")
-    response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=False, samesite="lax", path="/")
-
-    oauth_results.clear()
-    logger.debug(f"Cookies set: access_token={access_token}, refresh_token={refresh_token}")
-
+    access_token_expires_utc, refresh_token_expires_utc = get_expiration_times(
+        UTC_PLUS_7,
+        ACCESS_TOKEN_EXPIRE_MINUTES, 
+        REFRESH_TOKEN_EXPIRE_DAYS
+    )
+   
+    # Set cookies with expiration dates
+    response.set_cookie(
+        key="access_token", 
+        value=access_token, 
+        httponly=True, 
+        secure=False, 
+        samesite="lax", 
+        path="/", 
+        expires=access_token_expires_utc,
+        
+    )
+    response.set_cookie(
+        key="refresh_token", 
+        value=refresh_token, 
+        httponly=True, 
+        secure=False, 
+        samesite="lax", 
+        path="/", 
+        expires=refresh_token_expires_utc
+    )
     return {"message": "Cookies set successfully"}
 
 @app.get("/auth/google/sse/")
@@ -206,11 +254,11 @@ async def google_sse():
 
 # Core Logic Endpoints
 @app.post("/images/upload/")
-async def upload_images(files: List,current_user:str=Depends(get_current_user)):
+async def upload_images(files: List):
     return await receive_upload_images(files)
 
 @app.get("/files/download/{filename}")
-async def download_file(filename: str,current_user:str=Depends(get_current_user)):
+async def download_file(filename: str,):
     return download_file(filename)
 
 @app.websocket("/landmark/results/")
