@@ -7,7 +7,9 @@ import logging
 from api.storage import oauth_results
 from database.crud import create_user_google, get_user_by_email
 from database.database import get_db
+from dotenv import load_dotenv
 
+load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
