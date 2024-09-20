@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from api.request_user import get_current_user
 from auth.auth import authenticate_user
-from auth.token import ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS, UTC_PLUS_7,create_access_token, create_refresh_token, get_expiration_times,  verify_token
+from auth.token import ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS, UTC_PLUS_7,create_access_token, create_refresh_token, get_token_expiration_times,  verify_token
 from database.database import engine, SessionLocal
 import database.model as model
 from database.crud import create_user, get_user_by_email, delete_user
@@ -149,45 +149,89 @@ def login(
     access_token = create_access_token({"sub": user.user_id, "email": user.email})
     refresh_token = create_refresh_token({"sub": user.user_id})
 
-    access_token_expires_utc, refresh_token_expires_utc = get_expiration_times(
-        UTC_PLUS_7,
-        ACCESS_TOKEN_EXPIRE_MINUTES, 
-        REFRESH_TOKEN_EXPIRE_DAYS
-    )
+    # Extract expiration times from the generated JWTs
+    access_token_exp_utc, _ = get_token_expiration_times(access_token)
+    refresh_token_exp_utc, _ = get_token_expiration_times(refresh_token)
 
-    # Set cookies with formatted expiration dates
+    # Set cookies with the extracted expiration dates
     response.set_cookie(
-        key="access_token", 
-        value=access_token, 
-        httponly=True, 
-        secure=False, 
-        samesite="lax", 
-        path="/", 
-        expires=access_token_expires_utc,
-        
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=False,  # Set to True in production for HTTPS
+        samesite="lax",
+        path="/",
+        expires=access_token_exp_utc,  # Use expiration time from the token
     )
     response.set_cookie(
-        key="refresh_token", 
-        value=refresh_token, 
-        httponly=True, 
-        secure=False, 
-        samesite="lax", 
-        path="/", 
-        expires=refresh_token_expires_utc
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=False,  # Set to True in production for HTTPS
+        samesite="lax",
+        path="/",
+        expires=refresh_token_exp_utc,  # Use expiration time from the token
     )
 
     return {"message": "Login Success"}
 
 # Token Endpoints
+from fastapi import Response, Request, Depends, HTTPException
+from typing import Dict
+from datetime import datetime, timezone
+
 @app.post("/auth/refresh-token/", response_model=Dict[str, str])
-def refresh_token(refresh_token: str):
+def refresh_token(response: Response, request: Request):
+    # Extract the refresh token from the cookies
+    refresh_token = request.cookies.get("refresh_token")
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="Refresh token not provided")
+
+    # Verify the refresh token
     payload = verify_token(refresh_token)
     user_id = payload.get("sub")
+    email = payload.get("email")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
-    access_token = create_access_token({"sub": user_id})
+    # Create a new access token
+    access_token = create_access_token({"sub": user_id, "email": email})
+
+    # Get the expiration time for the current refresh token
+    refresh_token_expires_utc, _ = get_token_expiration_times(refresh_token)
+    current_time = datetime.now(timezone.utc)
+    time_until_expiration = refresh_token_expires_utc - current_time
+
+    # If refresh token will expire within 15 days, create a new one
+    if time_until_expiration.days <= 15:
+        refresh_token = create_refresh_token({"sub": user_id})
+        refresh_token_expires_utc, _ = get_token_expiration_times(refresh_token)
+
+        # Set the new refresh token in cookies
+        response.set_cookie(
+            key="refresh_token",
+            value=refresh_token,
+            httponly=True,
+            secure=False,  # Use secure=True in production with HTTPS
+            samesite="lax",
+            path="/",
+            expires=refresh_token_expires_utc
+        )
+
+    # Set the new access token in cookies
+    access_token_expires_utc, _ = get_token_expiration_times(access_token)
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=False,  # Use secure=True in production with HTTPS
+        samesite="lax",
+        path="/",
+        expires=access_token_expires_utc
+    )
+
     return {"access_token": access_token, "token_type": "bearer"}
+
 
 # Google Endpoints
 @app.get("/auth/google/login/")
@@ -208,11 +252,8 @@ async def set_cookies(response: Response):
     access_token = create_access_token({"sub": user_email})
     refresh_token = create_refresh_token({"sub": user_email})
 
-    access_token_expires_utc, refresh_token_expires_utc = get_expiration_times(
-        UTC_PLUS_7,
-        ACCESS_TOKEN_EXPIRE_MINUTES, 
-        REFRESH_TOKEN_EXPIRE_DAYS
-    )
+    access_token_exp_utc, _ = get_token_expiration_times(access_token)
+    refresh_token_exp_utc, _ = get_token_expiration_times(refresh_token)
    
     # Set cookies with expiration dates
     response.set_cookie(
@@ -222,7 +263,7 @@ async def set_cookies(response: Response):
         secure=False, 
         samesite="lax", 
         path="/", 
-        expires=access_token_expires_utc,
+        expires=access_token_exp_utc,
         
     )
     response.set_cookie(
@@ -232,7 +273,7 @@ async def set_cookies(response: Response):
         secure=False, 
         samesite="lax", 
         path="/", 
-        expires=refresh_token_expires_utc
+        expires=refresh_token_exp_utc
     )
     return {"message": "Cookies set successfully"}
 

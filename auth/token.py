@@ -1,6 +1,6 @@
+from fastapi import HTTPException, Response
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Any
-from fastapi import HTTPException
+from typing import Dict, Any, Tuple
 import jwt
 import os
 
@@ -11,11 +11,12 @@ if not SECRET_KEY:
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 15
-REFRESH_TOKEN_EXPIRE_DAYS = 7
+REFRESH_TOKEN_EXPIRE_DAYS = 365
 
 # Define UTC+7 timezone
 UTC_PLUS_7 = timezone(timedelta(hours=7))
 
+# Function to create a token with expiration
 def create_token(data: Dict[str, Any], expires_delta: timedelta) -> str:
     to_encode = data.copy()
     expire = datetime.now(UTC_PLUS_7) + expires_delta
@@ -23,14 +24,17 @@ def create_token(data: Dict[str, Any], expires_delta: timedelta) -> str:
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
+# Create access token
 def create_access_token(data: Dict[str, Any]) -> str:
     expires_delta = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     return create_token(data, expires_delta)
 
+# Create refresh token
 def create_refresh_token(data: Dict[str, Any]) -> str:
     expires_delta = timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     return create_token(data, expires_delta)
 
+# Verify and decode token
 def verify_token(token: str) -> Dict[str, Any]:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -39,17 +43,50 @@ def verify_token(token: str) -> Dict[str, Any]:
         raise HTTPException(status_code=401, detail="Token has expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
-    
-from datetime import datetime, timedelta, timezone
-from typing import Tuple
 
-def get_expiration_times(utc_plus_7: timezone, access_token_expire_minutes: int, refresh_token_expire_days: int) -> Tuple[datetime, datetime]:
-   
-    access_token_expires = datetime.now(utc_plus_7) + timedelta(minutes=access_token_expire_minutes)
-    refresh_token_expires = datetime.now(utc_plus_7) + timedelta(days=refresh_token_expire_days)
+# Extract expiration times from JWT
+def get_token_expiration_times(token: str) -> Tuple[datetime, datetime]:
+    decoded_token = verify_token(token)
+    exp_timestamp = decoded_token.get("exp")
 
-    # Convert to UTC
-    access_token_expires_utc = access_token_expires.astimezone(timezone.utc)
-    refresh_token_expires_utc = refresh_token_expires.astimezone(timezone.utc)
+    if exp_timestamp:
+        # Convert expiration timestamp to datetime in UTC
+        exp_datetime_utc = datetime.fromtimestamp(exp_timestamp, tz=timezone.utc)
+        exp_datetime_local = exp_datetime_utc.astimezone(UTC_PLUS_7)
+        return exp_datetime_utc, exp_datetime_local
+    else:
+        raise ValueError("No expiration claim found in the token")
 
-    return access_token_expires_utc, refresh_token_expires_utc
+# Set cookies using expiration from JWT
+def set_tokens_as_cookies(response: Response, access_token: str, refresh_token: str):
+    access_exp_utc, access_exp_local = get_token_expiration_times(access_token)
+    refresh_exp_utc, refresh_exp_local = get_token_expiration_times(refresh_token)
+
+    # Set access token as cookie
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        expires=access_exp_utc,  # Use the UTC expiration time for the cookie
+        httponly=True,
+        samesite="Lax"
+    )
+
+    # Set refresh token as cookie
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        expires=refresh_exp_utc,  # Use the UTC expiration time for the cookie
+        httponly=True,
+        samesite="Lax"
+    )
+
+# Example function to generate tokens and set cookies
+def generate_and_set_tokens(response: Response, user_data: Dict[str, Any]):
+    # Generate tokens
+    access_token = create_access_token(user_data)
+    refresh_token = create_refresh_token(user_data)
+
+    # Set tokens as cookies in response
+    set_tokens_as_cookies(response, access_token, refresh_token)
+
+    return {"access_token": access_token, "refresh_token": refresh_token}
