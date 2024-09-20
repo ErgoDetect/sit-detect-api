@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from api.request_user import get_current_user
 from auth.auth import authenticate_user
-from auth.token import ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS, UTC_PLUS_7,create_access_token, create_refresh_token, get_token_expiration_times,  verify_token
+from auth.token import create_access_token, create_refresh_token, get_token_expiration_times,  verify_token
 from database.database import engine, SessionLocal
 import database.model as model
 from database.crud import create_user, get_user_by_email, delete_user
