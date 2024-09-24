@@ -102,9 +102,18 @@ async def landmark_results(websocket: WebSocket):
             
             if response_counter < 5:
                 # saved_values.append(processed_data)
-                correct_values= {"shoulderPosition":processed_data.get_shoulder_position()['y'],
+                if response_counter == 0 :
+                    correct_values= {"shoulderPosition":processed_data.get_shoulder_position(),
                                  "diameterRight":processed_data.get_diameter_right(),
                                  "diameterLeft":processed_data.get_diameter_left()}
+                else :
+                    correct_values_tmp= {"shoulderPosition":processed_data.get_shoulder_position(),
+                                 "diameterRight":processed_data.get_diameter_right(),
+                                 "diameterLeft":processed_data.get_diameter_left()}
+                    if (correct_values_tmp["shoulderPosition"] is not None and
+                        correct_values_tmp["diameterRight"] is not None and
+                        correct_values_tmp["diameterLeft"] is not None) :
+                        correct_values = correct_values_tmp
                 response_counter += 1
                 # print(f"Response {response_counter} saved: {processed_data}", websocket)
 
@@ -113,7 +122,7 @@ async def landmark_results(websocket: WebSocket):
                 # print(f"First 5 values saved: {saved_values}", websocket)
                 response_counter += 1
 
-            current_values= {"shoulderPosition":processed_data.get_shoulder_position()['y'],
+            current_values= {"shoulderPosition":processed_data.get_shoulder_position(),
                             "diameterRight":processed_data.get_diameter_right(),
                             "diameterLeft":processed_data.get_diameter_left(),
                             "eyeAspectRatioRight":processed_data.get_blink_right(),
