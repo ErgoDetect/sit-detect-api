@@ -12,7 +12,7 @@ async def get_current_user(request: Request):
         user_id = payload.get("sub")
         email = payload.get("email")
         if not user_id & email:
-            raise HTTPException(status_code=401, detail="Invalid token payload")
+            raise HTTPException(status_code=401, detail="Invalid access token payload")
         return user_id
     except HTTPException:
         raise

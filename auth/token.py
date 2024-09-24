@@ -10,6 +10,7 @@ if not SECRET_KEY:
     raise ValueError("SECRET_KEY environment variable is not set")
 
 ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 1
 ACCESS_TOKEN_EXPIRE_HOURS = 1
 REFRESH_TOKEN_EXPIRE_DAYS = 365
 
@@ -26,7 +27,7 @@ def create_token(data: Dict[str, Any], expires_delta: timedelta) -> str:
 
 # Create access token
 def create_access_token(data: Dict[str, Any]) -> str:
-    expires_delta = timedelta(minutes=ACCESS_TOKEN_EXPIRE_HOURS)
+    expires_delta = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     return create_token(data, expires_delta)
 
 # Create refresh token

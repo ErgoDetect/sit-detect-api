@@ -3,6 +3,7 @@ import shutil
 from fastapi import HTTPException, UploadFile
 from pathlib import Path
 import cv2
+from fastapi.responses import FileResponse
 import numpy as np
 import logging
 from datetime import datetime
@@ -48,8 +49,9 @@ async def receive_upload_images(files: list[UploadFile]):
 
 # Download file
 def download_file(filename: str):
-    file_path = RESULT_DIR / filename
-    if file_path.exists() and file_path.is_file():
-        return FileResponse(path=file_path, filename=filename)
+    file_path = RESULT_DIR / filename  # Construct the file path
+    if file_path.exists() and file_path.is_file():  # Check if the file exists and is a file
+        return FileResponse(path=file_path, filename=filename)  # Serve the file as a response
     else:
-        raise HTTPException(status_code=404, detail="File not found")
+        raise HTTPException(status_code=404, detail="File not found")  # Raise 404 error if the file is not found
+
