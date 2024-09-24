@@ -350,8 +350,8 @@ async def landmark_results(websocket: WebSocket):
             else : result[3] = False   
             # print(f"[{blink_stack}], [{siting_stack}], [{distance_stack}], [{thoracic_stack}]")
             # print(result)
-            # print(datetime.fromtimestamp(object_data["timestamp"] / 1000))
-            # print(current_values["shoulderPosition"])
+            print(datetime.fromtimestamp(object_data["timestamp"] / 1000))
+            print(current_values["shoulderPosition"])
         
             
 
