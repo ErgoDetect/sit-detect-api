@@ -130,7 +130,7 @@ async def landmark_results(websocket: WebSocket):
             
             if current_values["shoulderPosition"] == None:
                 thoracic_stack = 0
-            elif correct_values["shoulderPosition"]*0.90>=current_values["shoulderPosition"]:
+            elif correct_values["shoulderPosition"]*0.90<=current_values["shoulderPosition"]:
                 thoracic_stack += 1
             else : thoracic_stack = 0
 
