@@ -83,26 +83,26 @@ app.include_router(user_router, prefix='/user', tags=["User"])
 app.include_router(google_router, prefix='/auth/google', tags=["Google OAuth"])
 app.include_router(websocket_router, prefix='/landmark', tags=["WebSocket"])
 
-@app.get("/auth/status/")
-async def auth_status(request: Request):
-    access_token = request.cookies.get("access_token")
+# @app.get("/auth/status/")
+# async def auth_status(request: Request):
+#     access_token = request.cookies.get("access_token")
     
-    if not access_token:
-        # Raise HTTP 401 Unauthorized if access_token is not found
-        raise HTTPException(
-            status_code=401,
-            detail="No access token"
-        )
+#     if not access_token:
+#         # Raise HTTP 401 Unauthorized if access_token is not found
+#         raise HTTPException(
+#             status_code=401,
+#             detail="No access token"
+#         )
 
-    try:
-        payload = verify_token(access_token)
-        return {"is_login": True, "message": "Token is valid"}
-    except Exception as e:
-        # Raise HTTP 401 Unauthorized if token verification fails
-        raise HTTPException(
-            status_code=401,
-            detail=f"Invalid token: {str(e)}"
-        )
+#     try:
+#         payload = verify_token(access_token)
+#         return {"is_login": True, "message": "Token is valid"}
+#     except Exception as e:
+#         # Raise HTTP 401 Unauthorized if token verification fails
+#         raise HTTPException(
+#             status_code=401,
+#             detail=f"Invalid token: {str(e)}"
+        # )
 
 @app.post("/images/upload/")
 async def upload_images(

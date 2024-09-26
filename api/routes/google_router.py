@@ -55,7 +55,8 @@ async def google_login():
     try:
         authorization_url, state = flow.authorization_url(
             access_type="offline",
-            include_granted_scopes="true"
+            include_granted_scopes="true",
+            prompt="select_account"
         )
         oauth_results['state'] = state
         return JSONResponse(content={"url": authorization_url})
@@ -121,13 +122,13 @@ async def set_cookies(response: Response):
     access_token_exp_utc, _ = get_token_expiration_times(access_token)
     refresh_token_exp_utc, _ = get_token_expiration_times(refresh_token)
 
-    SECURE_COOKIES = os.getenv("HELLO") == "production"
+
 
     response.set_cookie(
         key="access_token", 
         value=access_token, 
         httponly=True, 
-        secure=SECURE_COOKIES,
+
         samesite="lax", 
         path="/", 
         expires=access_token_exp_utc,
@@ -136,7 +137,7 @@ async def set_cookies(response: Response):
         key="refresh_token", 
         value=refresh_token, 
         httponly=True, 
-        secure=SECURE_COOKIES,
+
         samesite="lax", 
         path="/", 
         expires=refresh_token_exp_utc
