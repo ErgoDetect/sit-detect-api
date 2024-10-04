@@ -1,5 +1,3 @@
-# auth_utils.py
-
 from passlib.context import CryptContext
 
 # Set up the password hashing context

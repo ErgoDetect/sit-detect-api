@@ -6,7 +6,6 @@ from fastapi import (
     Depends,
     FastAPI,
     File,
-    HTTPException,
     Request,
     UploadFile,
     APIRouter,
@@ -20,7 +19,8 @@ from api.routes.auth_router import auth_router
 from api.routes.google_router import google_router
 from api.routes.user_router import user_router
 from api.routes.websocket_router import websocket_router
-from auth.token import check_token, get_sub_from_token
+from auth.mail.mail_config import CONF
+from auth.token import check_token
 from database.database import engine, get_db
 import database.model as model
 from api.image_processing import receive_upload_images, download_file
@@ -35,11 +35,12 @@ env_path = os.path.join(script_dir, '.env')
 load_dotenv(dotenv_path=env_path)
 logger.info("Loaded .env file")
 
+
 # Initialize FastAPI app
 app = FastAPI()
 
 # CORS configuration
-origins = ["http://localhost:1212"]
+origins = ["http://localhost:1212","ergodetect://"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -102,9 +103,9 @@ async def auth_status(request: Request, db: Session = Depends(get_db)):
 
     # Validate access token
     if access_token:
-        access_result = check_token(access_token, "access")
+        access_result = check_token(access_token,"access")
         if access_result["status"] == "Authenticated":
-            user_id = access_result["user_id"]
+            user_id = access_result["sub"]
             # Verify session in the database
             user_session = db.query(model.UserSession).filter(
                 model.UserSession.user_id == user_id,
@@ -129,7 +130,7 @@ async def auth_status(request: Request, db: Session = Depends(get_db)):
 
     # If no valid access token, check refresh token
     if refresh_token:
-        refresh_result = check_token(refresh_token, "refresh")
+        refresh_result = check_token(refresh_token,"refresh")
         if refresh_result["status"] == "Authenticated":
             user_id = refresh_result["user_id"]
             user_session = db.query(model.UserSession).filter(
@@ -167,3 +168,7 @@ async def download_files(
     return await download_file(filename)
 
 app.include_router(file_router, prefix='/files', tags=["Files"])
+
+
+
+

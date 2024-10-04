@@ -1,4 +1,3 @@
-import datetime
 from sqlalchemy import Column, DateTime, String, ForeignKey, Boolean, UniqueConstraint
 from sqlalchemy.orm import relationship
 from auth.token import get_current_time

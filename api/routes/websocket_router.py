@@ -1,9 +1,8 @@
 import json
 import logging
-from typing import List, Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.websockets import WebSocketState
-from api.procressData import processData  # Ensure this import is correct
+from api.procressData import processData 
 
 logger = logging.getLogger(__name__)
 
@@ -14,22 +13,19 @@ async def landmark_results(websocket: WebSocket):
     await websocket.accept()
     logger.info("WebSocket connection accepted")
 
+    # Constants
     frame_per_second = 1
+    ear_threshold_low = 0.2
+    ear_threshold_high = 0.4
 
+    # Initialization of variables
     response_counter = 0
     saved_values = []
     correct_values = {}
-    current_values = {}
-
-    ear_threshold_low = 0.2
-    ear_threshold_high = 0.4
     ear_below_threshold = False
     blink_detected = False
 
     latest_nearest_distance = 0
-    latest_nearest_distance_left = 0
-    latest_nearest_distance_right = 0
-
     blink_stack = 0
     sitting_stack = 0
     distance_stack = 0
@@ -39,7 +35,7 @@ async def landmark_results(websocket: WebSocket):
 
     try:
         while True:
-            # Receive data from the client
+            # Receive and process data from the client
             message = await websocket.receive_text()
             object_data = json.loads(message)
             processed_data = processData(object_data['data'])
@@ -59,7 +55,6 @@ async def landmark_results(websocket: WebSocket):
                 response_counter += 1
                 if response_counter == 5:
                     # Compute averages for correct_values
-                    # Handle cases where values might be None
                     def average(values):
                         valid_values = [v for v in values if v is not None]
                         return sum(valid_values) / len(valid_values) if valid_values else None
@@ -71,18 +66,18 @@ async def landmark_results(websocket: WebSocket):
                     }
                 continue  # Skip further processing until baseline is established
 
-            # Now process data using the established correct_values
-            # Update thoracic_stack
+            # Use baseline values to process the current data
             shoulder_pos = current_values.get("shoulderPosition")
             baseline_shoulder_pos = correct_values.get("shoulderPosition")
-            if shoulder_pos is None or baseline_shoulder_pos is None:
-                thoracic_stack = 0
-            elif baseline_shoulder_pos * 0.90 >= shoulder_pos:
-                thoracic_stack += 1
-            else:
-                thoracic_stack = 0
 
-            # Check if face is detected
+            # Update thoracic_stack if necessary
+            if shoulder_pos is not None and baseline_shoulder_pos is not None:
+                if baseline_shoulder_pos * 0.90 >= shoulder_pos:
+                    thoracic_stack += 1
+                else:
+                    thoracic_stack = 0
+
+            # Reset stacks if no face is detected
             if not object_data['data'].get("faceDetect", False):
                 blink_stack = 0
                 sitting_stack = 0
@@ -96,13 +91,9 @@ async def landmark_results(websocket: WebSocket):
                 baseline_diameter_right = correct_values.get("diameterRight")
                 baseline_diameter_left = correct_values.get("diameterLeft")
 
-                if diameter_right is not None:
-                    latest_nearest_distance_right = diameter_right
-                if diameter_left is not None:
-                    latest_nearest_distance_left = diameter_left
-
                 latest_nearest_distance = max(
-                    latest_nearest_distance_right, latest_nearest_distance_left
+                    diameter_right or latest_nearest_distance,
+                    diameter_left or latest_nearest_distance
                 )
 
                 baseline_distance = max(
@@ -135,11 +126,11 @@ async def landmark_results(websocket: WebSocket):
                     blink_detected = False
                     blink_stack += 1
 
-            # Update result based on stacks
-            result[0] = blink_stack >= 5 * frame_per_second
-            result[1] = sitting_stack >= 2700 * frame_per_second
-            result[2] = distance_stack >= 30 * frame_per_second
-            result[3] = thoracic_stack >= 2 * frame_per_second
+            # Update the result list based on thresholds
+            result[0] = blink_stack >= 5 * frame_per_second  # Blink alert
+            result[1] = sitting_stack >= 2700 * frame_per_second  # Sitting alert
+            result[2] = distance_stack >= 30 * frame_per_second  # Distance alert
+            result[3] = thoracic_stack >= 2 * frame_per_second  # Thoracic alert
 
             # Send the result back to the client
             await websocket.send_json({
@@ -155,3 +146,4 @@ async def landmark_results(websocket: WebSocket):
         logger.error(f"Error in WebSocket connection: {e}")
         if websocket.client_state == WebSocketState.CONNECTED:
             await websocket.close()
+
