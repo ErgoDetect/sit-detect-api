@@ -146,4 +146,3 @@ async def landmark_results(websocket: WebSocket):
         logger.error(f"Error in WebSocket connection: {e}")
         if websocket.client_state == WebSocketState.CONNECTED:
             await websocket.close()
-
