@@ -60,7 +60,6 @@ async def landmark_results(websocket: WebSocket):
                 "eyeAspectRatioLeft": processed_data.get_blink_left()
             }
 
-            print("a")
             # Process the first 5 messages to establish baseline values
             if response_counter < 5:
                 saved_values.append(current_values) 
@@ -99,7 +98,6 @@ async def landmark_results(websocket: WebSocket):
                 thoracic_stack += 1
             else : thoracic_stack = 0
 
-            print("b")
             # Reset stacks if no face is detected
             if object_data['data']["faceDetect"] == False:
                 blink_stack = 0
@@ -147,8 +145,6 @@ async def landmark_results(websocket: WebSocket):
                 else:
                     blink_detected = False
                     blink_stack += 1
-
-            print("c")
             
             if(blink_stack >= blink_stack_threshold * frame_per_second ):
                 if(result[0]==False):
