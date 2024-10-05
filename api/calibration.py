@@ -3,11 +3,10 @@ import cv2 as cv
 import json
 import logging
 from pathlib import Path
-import math
 
 logger = logging.getLogger(__name__)
 
-def calibrate_camera(image_paths, resolution=(1920, 1080)):
+def calibrate_camera(image_paths, resolution=None):
     chessboard_size = (9, 6)
     size_of_chessboard_squares_mm = 20
 
@@ -21,10 +20,7 @@ def calibrate_camera(image_paths, resolution=(1920, 1080)):
     objpoints = []  # 3D points in real-world space
     imgpoints = []  # 2D points in image plane
 
-    output_dir = Path('images/calibrate')
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    frame_size = resolution  # Use the provided resolution for resizing images
+    frame_size = None  # Will be set based on the first image
 
     for image_path in image_paths:
         img = cv.imread(str(image_path))
@@ -34,32 +30,40 @@ def calibrate_camera(image_paths, resolution=(1920, 1080)):
 
         gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
 
-        if img.shape[:2] != (frame_size[1], frame_size[0]):
-            img = cv.resize(img, frame_size)
-            gray = cv.resize(gray, frame_size)
+        if frame_size is None:
+            frame_size = (img.shape[1], img.shape[0])  # (width, height)
+
+        # Ensure all images are the same size
+        if (img.shape[1], img.shape[0]) != frame_size:
+            logger.warning(f"Image {image_path} has a different size. Skipping.")
+            continue
 
         ret, corners = cv.findChessboardCorners(gray, chessboard_size, None)
         if ret:
             objpoints.append(objp)
-            corners2 = cv.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
+            corners2 = cv.cornerSubPix(
+                gray, corners, (11, 11), (-1, -1), criteria
+            )
             imgpoints.append(corners2)
+        else:
+            logger.warning(f"Chessboard not found in image: {image_path}")
 
     if objpoints and imgpoints:
-        ret, camera_matrix, dist, rvecs, tvecs = cv.calibrateCamera(objpoints, imgpoints, frame_size, None, None)
+        ret, camera_matrix, dist_coeffs, rvecs, tvecs = cv.calibrateCamera(
+            objpoints, imgpoints, frame_size, None, None
+        )
 
-        # Adjust focal length
-        camera_matrix[0, 0] = math.floor(camera_matrix[0, 0] / 2)
-        camera_matrix[1, 1] = math.floor(camera_matrix[1, 1] / 2)
-        logger.info(f"Adjusted focal length to: fx={camera_matrix[0, 0]}, fy={camera_matrix[1, 1]}")
-
-        mean_error = calculate_reprojection_error(objpoints, imgpoints, rvecs, tvecs, camera_matrix, dist)
+        mean_error = calculate_reprojection_error(
+            objpoints, imgpoints, rvecs, tvecs, camera_matrix, dist_coeffs
+        )
+        logger.info(f"Calibration successful with mean reprojection error: {mean_error}")
 
         result_dir = Path('calibrate_result')
         result_dir.mkdir(parents=True, exist_ok=True)
 
         calibration_data = {
             "cameraMatrix": camera_matrix.tolist(),
-            "distCoeffs": dist.tolist(),
+            "distCoeffs": dist_coeffs.tolist(),
             "mean_error": mean_error
         }
 
@@ -76,10 +80,15 @@ def calibrate_camera(image_paths, resolution=(1920, 1080)):
         logger.error("No valid images found for calibration.")
         return None, None
 
-def calculate_reprojection_error(objpoints, imgpoints, rvecs, tvecs, camera_matrix, dist):
+def calculate_reprojection_error(objpoints, imgpoints, rvecs, tvecs, camera_matrix, dist_coeffs):
     total_error = 0
+    total_points = 0
     for i in range(len(objpoints)):
-        imgpoints2, _ = cv.projectPoints(objpoints[i], rvecs[i], tvecs[i], camera_matrix, dist)
-        error = cv.norm(imgpoints[i], imgpoints2, cv.NORM_L2) / len(imgpoints2)
-        total_error += error
-    return total_error / len(objpoints)
+        imgpoints_proj, _ = cv.projectPoints(
+            objpoints[i], rvecs[i], tvecs[i], camera_matrix, dist_coeffs
+        )
+        error = cv.norm(imgpoints[i], imgpoints_proj, cv.NORM_L2)
+        total_error += error ** 2
+        total_points += len(imgpoints_proj)
+    mean_error = np.sqrt(total_error / total_points)
+    return mean_error

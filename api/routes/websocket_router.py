@@ -1,196 +1,148 @@
 import json
 import logging
-from typing import List
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.websockets import WebSocketState
-from api.procressData import processData
-
+from api.procressData import processData 
 
 logger = logging.getLogger(__name__)
-
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: List[WebSocket] = []
-
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
-
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
-
-    async def send_message(self, message: str, websocket: WebSocket):
-        await websocket.send_text(message)
-
-# Instance of the connection manager
-manager = ConnectionManager()
-
-# Process WebSocket for landmark results
-async def process_landmark_results(websocket: WebSocket):
-    await websocket.accept()
-    logger.info("WebSocket connection accepted")
-
-    try:
-        while websocket.client_state == WebSocketState.CONNECTED:
-            try:
-                message = await websocket.receive_text()
-                object_data = json.loads(message)
-                processed_data = processData(object_data['data'])
-                result = {
-                    "shoulderPosition": processed_data.get_shoulder_position(),
-                    "blinkRight": processed_data.get_blink_right(),
-                    "blinkLeft": processed_data.get_blink_left(),
-                }
-                await websocket.send_json(result)
-            except WebSocketDisconnect:
-                logger.info("WebSocket disconnected")
-                break
-            except Exception as e:
-                logger.error(f"Error during WebSocket communication: {e}")
-                await websocket.send_json({"error": str(e)})
-                await websocket.close()
-                break
-    except Exception as e:
-        logger.error(f"Error in WebSocket connection: {e}")
-        if websocket.client_state == WebSocketState.CONNECTED:
-            await websocket.close()
-
 
 websocket_router = APIRouter()
 
 @websocket_router.websocket("/results/")
 async def landmark_results(websocket: WebSocket):
-    await manager.connect(websocket)
+    await websocket.accept()
+    logger.info("WebSocket connection accepted")
 
+    # Constants
     frame_per_second = 1
+    ear_threshold_low = 0.2
+    ear_threshold_high = 0.4
 
+    # Initialization of variables
     response_counter = 0
     saved_values = []
     correct_values = {}
-    current_values = {}
-
-    ear_threshoild_low = 0.2
-    ear_threshoild_high = 0.4
     ear_below_threshold = False
     blink_detected = False
 
-    lastest_nearest_distance = 0
-    lastest_nearest_distance_left = 0
-    lastest_nearest_distance_right = 0
-
+    latest_nearest_distance = 0
     blink_stack = 0
-    siting_stack = 0
+    sitting_stack = 0
     distance_stack = 0
     thoracic_stack = 0
 
-    # result = [blink_stack,siting_stack,distance_stack,thoracic_stack]
-    # result คือตัวผลลัพธ์ที่จะส่ง
-    result = [False,False,False,False]
+    result = [False, False, False, False]  # [blink_alert, sitting_alert, distance_alert, thoracic_alert]
 
-
-
-    # goback = "\033[F" * 2
     try:
         while True:
-            # Receive data from the client
+            # Receive and process data from the client
             message = await websocket.receive_text()
             object_data = json.loads(message)
             processed_data = processData(object_data['data'])
 
-            # print(object_data['data'],"\n_____________________________________________")
-            # Process the first 5 messages
-            
+            # Extract current values
+            current_values = {
+                "shoulderPosition": processed_data.get_shoulder_position().get('y'),
+                "diameterRight": processed_data.get_diameter_right(),
+                "diameterLeft": processed_data.get_diameter_left(),
+                "eyeAspectRatioRight": processed_data.get_blink_right(),
+                "eyeAspectRatioLeft": processed_data.get_blink_left()
+            }
+
+            # Process the first 5 messages to establish baseline values
             if response_counter < 5:
-                # saved_values.append(processed_data)
-                if response_counter == 0 :
-                    correct_values= {"shoulderPosition":processed_data.get_shoulder_position(),
-                                 "diameterRight":processed_data.get_diameter_right(),
-                                 "diameterLeft":processed_data.get_diameter_left()}
-                else :
-                    correct_values_tmp= {"shoulderPosition":processed_data.get_shoulder_position(),
-                                 "diameterRight":processed_data.get_diameter_right(),
-                                 "diameterLeft":processed_data.get_diameter_left()}
-                    if (correct_values_tmp["shoulderPosition"] is not None and
-                        correct_values_tmp["diameterRight"] is not None and
-                        correct_values_tmp["diameterLeft"] is not None) :
-                        correct_values = correct_values_tmp
+                saved_values.append(current_values)
                 response_counter += 1
-                # print(f"Response {response_counter} saved: {processed_data}", websocket)
+                if response_counter == 5:
+                    # Compute averages for correct_values
+                    def average(values):
+                        valid_values = [v for v in values if v is not None]
+                        return sum(valid_values) / len(valid_values) if valid_values else None
 
-            # After 5 messages are saved, continue processing if needed
-            if response_counter == 5:
-                # print(f"First 5 values saved: {saved_values}", websocket)
-                response_counter += 1
+                    correct_values = {
+                        "shoulderPosition": average([v['shoulderPosition'] for v in saved_values]),
+                        "diameterRight": average([v['diameterRight'] for v in saved_values]),
+                        "diameterLeft": average([v['diameterLeft'] for v in saved_values])
+                    }
+                continue  # Skip further processing until baseline is established
 
-            current_values= {"shoulderPosition":processed_data.get_shoulder_position(),
-                            "diameterRight":processed_data.get_diameter_right(),
-                            "diameterLeft":processed_data.get_diameter_left(),
-                            "eyeAspectRatioRight":processed_data.get_blink_right(),
-                            "eyeAspectRatioLeft":processed_data.get_blink_left()}
-            
-            if current_values["shoulderPosition"] == None:
-                thoracic_stack = 0
-            elif correct_values["shoulderPosition"]*0.90>=current_values["shoulderPosition"]:
-                thoracic_stack += 1
-            else : thoracic_stack = 0
+            # Use baseline values to process the current data
+            shoulder_pos = current_values.get("shoulderPosition")
+            baseline_shoulder_pos = correct_values.get("shoulderPosition")
 
-            if object_data['data']["faceDetect"] == False:
+            # Update thoracic_stack if necessary
+            if shoulder_pos is not None and baseline_shoulder_pos is not None:
+                if baseline_shoulder_pos * 0.90 >= shoulder_pos:
+                    thoracic_stack += 1
+                else:
+                    thoracic_stack = 0
+
+            # Reset stacks if no face is detected
+            if not object_data['data'].get("faceDetect", False):
                 blink_stack = 0
-                siting_stack = 0
+                sitting_stack = 0
                 distance_stack = 0
-            else :
-                siting_stack += 1
-                if current_values["diameterRight"] != None or current_values["diameterLeft"] != None:
-                    if current_values["diameterRight"] != None:
-                        lastest_nearest_distance_right = current_values["diameterRight"]
-                    if current_values["diameterLeft"] != None:
-                        lastest_nearest_distance_left = current_values["diameterLeft"]
-                    if lastest_nearest_distance_right > lastest_nearest_distance_left:
-                        lastest_nearest_distance = lastest_nearest_distance_right
-                    else : lastest_nearest_distance = lastest_nearest_distance_left
-                if correct_values["diameterRight"] > correct_values["diameterLeft"] :
-                    if correct_values["diameterRight"] *0.90<= lastest_nearest_distance:
-                        distance_stack +=1
-                    else : distance_stack = 0
-                else :
-                    if correct_values["diameterLeft"]*0.90<= lastest_nearest_distance:
-                        distance_stack +=1
-                    else : distance_stack = 0
-                if current_values["eyeAspectRatioLeft"] <= ear_threshoild_low or current_values["eyeAspectRatioRight"] <= ear_threshoild_low:
+            else:
+                sitting_stack += 1
+
+                # Update distance_stack
+                diameter_right = current_values.get("diameterRight")
+                diameter_left = current_values.get("diameterLeft")
+                baseline_diameter_right = correct_values.get("diameterRight")
+                baseline_diameter_left = correct_values.get("diameterLeft")
+
+                latest_nearest_distance = max(
+                    diameter_right or latest_nearest_distance,
+                    diameter_left or latest_nearest_distance
+                )
+
+                baseline_distance = max(
+                    baseline_diameter_right or 0, baseline_diameter_left or 0
+                )
+
+                if baseline_distance and latest_nearest_distance:
+                    if baseline_distance * 0.90 <= latest_nearest_distance:
+                        distance_stack += 1
+                    else:
+                        distance_stack = 0
+
+                # Update blink_stack
+                ear_left = current_values.get("eyeAspectRatioLeft")
+                ear_right = current_values.get("eyeAspectRatioRight")
+
+                if (ear_left is not None and ear_left <= ear_threshold_low) or \
+                   (ear_right is not None and ear_right <= ear_threshold_low):
                     ear_below_threshold = True
-                    blink_stack += 1 
-                    
-                elif ear_below_threshold and (current_values["eyeAspectRatioLeft"]  >= ear_threshoild_high or current_values["eyeAspectRatioRight"] >= ear_threshoild_high):
+                    blink_stack += 1
+                elif ear_below_threshold and (
+                    (ear_left is not None and ear_left >= ear_threshold_high) or
+                    (ear_right is not None and ear_right >= ear_threshold_high)
+                ):
                     if not blink_detected:
                         blink_stack = 0
                         blink_detected = True
                     ear_below_threshold = False
                 else:
                     blink_detected = False
-                    blink_stack += 1 
-                
+                    blink_stack += 1
 
-            if blink_stack >= 5*frame_per_second:
-                result[0] = True
-            else : result[0] = False
-            if siting_stack >= 2700*frame_per_second:
-                result[1] = True
-            else : result[1] = False
-            if distance_stack >= 30*frame_per_second:
-                result[2] = True
-            else : result[2] = False
-            if thoracic_stack >= 2*frame_per_second:
-                result[3] = True 
-            else : result[3] = False   
-            # print(f"[{blink_stack}], [{siting_stack}], [{distance_stack}], [{thoracic_stack}]")
-            # print(result)
-            # print(datetime.fromtimestamp(object_data["timestamp"] / 1000))
-            # print(current_values["shoulderPosition"])
-        
-            
+            # Update the result list based on thresholds
+            result[0] = blink_stack >= 5 * frame_per_second  # Blink alert
+            result[1] = sitting_stack >= 2700 * frame_per_second  # Sitting alert
+            result[2] = distance_stack >= 30 * frame_per_second  # Distance alert
+            result[3] = thoracic_stack >= 2 * frame_per_second  # Thoracic alert
+
+            # Send the result back to the client
+            await websocket.send_json({
+                "blink_alert": result[0],
+                "sitting_alert": result[1],
+                "distance_alert": result[2],
+                "thoracic_alert": result[3]
+            })
 
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
-        print(f"Connection closed. Saved values: {saved_values}")
-
-
+        logger.info("WebSocket disconnected")
+    except Exception as e:
+        logger.error(f"Error in WebSocket connection: {e}")
+        if websocket.client_state == WebSocketState.CONNECTED:
+            await websocket.close()
