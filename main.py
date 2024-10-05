@@ -88,6 +88,10 @@ app.include_router(websocket_router, prefix='/landmark', tags=["WebSocket"])
 # Authentication router
 auth_status_router = APIRouter()
 
+@app.get("/")
+async def root():
+    return {"message": "Hello World"}
+
 
 @auth_status_router.get("/status/")
 async def auth_status(request: Request, db: Session = Depends(get_db)):
