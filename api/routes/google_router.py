@@ -11,7 +11,8 @@ from database.crud import create_user_google, delete_user_sessions, get_user_by_
 from database.database import get_db
 from auth.token import generate_and_set_tokens, get_current_time
 import os
-
+from dotenv import load_dotenv
+load_dotenv()
 from database.model import UserSession
 
 # Initialize Logging

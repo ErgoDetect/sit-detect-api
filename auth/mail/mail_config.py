@@ -3,7 +3,8 @@ from fastapi_mail import ConnectionConfig, FastMail, MessageSchema
 from pydantic import BaseModel, EmailStr
 from typing import List
 import os
-
+from dotenv import load_dotenv
+load_dotenv()
 
 # Email schema for sending email requests
 class EmailSchema(BaseModel):
