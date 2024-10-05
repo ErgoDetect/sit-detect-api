@@ -42,7 +42,7 @@ async def landmark_results(websocket: WebSocket):
 
             # Extract current values
             current_values = {
-                "shoulderPosition": processed_data.get_shoulder_position().get('y'),
+                "shoulderPosition": processed_data.get_shoulder_position(),
                 "diameterRight": processed_data.get_diameter_right(),
                 "diameterLeft": processed_data.get_diameter_left(),
                 "eyeAspectRatioRight": processed_data.get_blink_right(),
