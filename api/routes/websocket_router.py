@@ -42,7 +42,7 @@ async def landmark_results(websocket: WebSocket):
 
             # Extract current values
             current_values = {
-                "shoulderPosition": processed_data.get_shoulder_position().get('y'),
+                "shoulderPosition": processed_data.get_shoulder_position(),
                 "diameterRight": processed_data.get_diameter_right(),
                 "diameterLeft": processed_data.get_diameter_left(),
                 "eyeAspectRatioRight": processed_data.get_blink_right(),
@@ -66,6 +66,17 @@ async def landmark_results(websocket: WebSocket):
                     }
                 continue  # Skip further processing until baseline is established
 
+            current_values= {"shoulderPosition":processed_data.get_shoulder_position(),
+                            "diameterRight":processed_data.get_diameter_right(),
+                            "diameterLeft":processed_data.get_diameter_left(),
+                            "eyeAspectRatioRight":processed_data.get_blink_right(),
+                            "eyeAspectRatioLeft":processed_data.get_blink_left()}
+            
+            if current_values["shoulderPosition"] == None:
+                thoracic_stack = 0
+            elif correct_values["shoulderPosition"]*0.90<=current_values["shoulderPosition"]:
+                thoracic_stack += 1
+            else : thoracic_stack = 0
             # Use baseline values to process the current data
             shoulder_pos = current_values.get("shoulderPosition")
             baseline_shoulder_pos = correct_values.get("shoulderPosition")

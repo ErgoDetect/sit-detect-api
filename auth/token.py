@@ -5,6 +5,8 @@ import jwt
 import os
 from datetime import datetime, timedelta, timezone
 import pytz
+from dotenv import load_dotenv
+load_dotenv()
 
 # Constants for JWT configuration
 SECRET_KEY = os.getenv("SECRET_KEY")

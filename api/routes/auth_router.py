@@ -15,6 +15,8 @@ from database.model import User, UserSession
 from database.schemas.Auth import LoginResponse, SignUpRequest, LoginRequest
 from auth.auth import authenticate_user
 import os
+from dotenv import load_dotenv
+load_dotenv()
 
 auth_router = APIRouter()
 SECURE_COOKIES = os.getenv("HELLO") == "production"
