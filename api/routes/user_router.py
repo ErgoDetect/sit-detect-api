@@ -1,4 +1,5 @@
 import logging
+import os
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
@@ -47,18 +48,14 @@ def verify_user_mail(token: str, db: Session = Depends(get_db)):
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        # Check if the user is already verified
-        if user.verified:
-            return HTMLResponse(content="<h1>User is already verified</h1>", status_code=200)
-
         # Mark the user as verified
         user.verified = True
         db.commit()
-
-        # Use `pathlib.Path` to construct a cross-platform file path for the HTML template
-        template_path = Path('auth', 'mail', 'success_verify.html')
-
-        # Load the email verification template (assumed to be a utility function)
+        
+        # Load the success email template and return it
+        template_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "auth", "mail", "success_verify.html"))
+        logger.info(f"Template path: {template_path}")
+        
         html_content = load_email_template(template_path)
 
         return HTMLResponse(content=html_content, status_code=200)
