@@ -7,7 +7,7 @@ class User(Base):
     __tablename__ = 'users'
     
     user_id = Column(String(21), primary_key=True, index=True)
-    email = Column(String(100), unique=True, nullable=False, index=True)
+    email = Column(String(100), unique=False, nullable=False)
     password = Column(String(128), nullable=True)
     display_name = Column(String(100), nullable=False)
     sign_up_method = Column(String(50), nullable=True)

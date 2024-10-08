@@ -7,7 +7,7 @@ from fastapi import APIRouter, Request, Depends, Response, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from google_auth_oauthlib.flow import Flow
-from database.crud import create_user_google, delete_user_sessions, get_user_by_email
+from database.crud import create_user_google, delete_user_sessions, get_user_by_email, get_user_by_id, get_user_sessions
 from database.database import get_db
 from auth.token import generate_and_set_tokens, get_current_time
 import os
@@ -105,6 +105,7 @@ async def login_with_google(request: Request):
 @google_router.get("/callback/")
 async def callback_from_google(response: Response, request: Request, db: Session = Depends(get_db)):
     try:
+        # Step 1: Handle OAuth state and code
         flow = get_google_flow()
         code = request.query_params.get("code")
         state = request.query_params.get("state")
@@ -113,41 +114,41 @@ async def callback_from_google(response: Response, request: Request, db: Session
         if not code or state != stored_state:
             raise HTTPException(status_code=400, detail="Invalid state or authorization code.")
 
-        # Exchange the code for user info
+        # Step 2: Exchange authorization code for user info
         user_info = await exchange_google_code_for_user_info(flow, code)
+        if not user_info or 'email' not in user_info:
+            raise HTTPException(status_code=400, detail="Failed to retrieve user info from Google.")
 
-        # Check if user exists, create if not
-        existing_user = get_user_by_email(db, email=user_info['email'])
-        if not existing_user:
+        # Step 3: Create or update user in database
+        user = get_user_by_email(db, email=user_info['email'],sign_up_method="google")
+        if not user:
             create_user_google(db, user_id=user_info['id'], user_email=user_info['email'])
 
-        user_id = user_info['id']  # Google user ID
-
-        # Fetch Device-Identifier from stored results
+        # Step 4: Manage user sessions
+        user_sessions = get_user_sessions(db, user_id=user_info['id'])
         device_identifier = await get_oauth_result('device_identifier')
+
         if not device_identifier:
             raise HTTPException(status_code=400, detail="Device identifier missing")
 
-        # Invalidate existing sessions for this user on the current device
-        delete_user_sessions(db, user_id, device_identifier)
+        # Delete any existing sessions for the device
+        if user_sessions:
+            delete_user_sessions(db, user_id=user_info['id'], device_identifier=device_identifier)
 
-        # Create a new session
+        # Step 5: Create a new session for the user
         session_id = str(uuid.uuid4())
         current_time = get_current_time()
         new_session = UserSession(
             session_id=session_id,
-            user_id=user_id,
+            user_id=user_info['id'],
             device_identifier=device_identifier,
             created_at=current_time,
-            expires_at=current_time + timedelta(hours=1)
+            expires_at=current_time + timedelta(hours=1)  # Session valid for 1 hour
         )
         db.add(new_session)
-        db.commit()
+        db.commit()  # Commit the new session to the database
 
-        # Generate and set tokens as HTTP-only cookies
-        
-
-        # Store user info for SSE or future use
+        # Step 6: Store user info for future use or SSE
         await store_oauth_result('user', {
             'user_id': user_info['id'],
             'user_email': user_info['email'],
@@ -158,8 +159,11 @@ async def callback_from_google(response: Response, request: Request, db: Session
         return {"message": "Callback processed successfully, tokens set"}
 
     except Exception as e:
+        # Enhanced error logging
         logger.error(f"Error during Google token exchange: {e}")
         raise HTTPException(status_code=500, detail="Error during token exchange with Google.")
+
+
 
 # Set cookies after Google authentication
 @google_router.get("/set-cookies/")
