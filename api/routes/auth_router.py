@@ -1,4 +1,5 @@
 from datetime import timedelta
+import logging
 from typing import Dict
 import uuid
 from fastapi import (
@@ -6,7 +7,6 @@ from fastapi import (
 )
 from fastapi_mail import MessageSchema, MessageType
 from sqlalchemy.orm import Session
-from auth.auth_utils import hash_password
 from auth.mail.mail_config import load_email_template, send_verification_email
 from auth.token import create_verify_token, generate_and_set_tokens, get_current_time, verify_token
 from database.crud import delete_user_sessions, get_user_by_email, create_user
@@ -14,10 +14,9 @@ from database.database import get_db
 from database.model import User, UserSession
 from database.schemas.Auth import LoginResponse, SignUpRequest, LoginRequest
 from auth.auth import authenticate_user
-import os
-from dotenv import load_dotenv
-load_dotenv()
 
+
+logger = logging.getLogger(__name__)
 auth_router = APIRouter()
 
 @auth_router.post("/signup/", status_code=status.HTTP_201_CREATED)
@@ -31,31 +30,36 @@ async def sign_up(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
     
     # Step 2: Hash the password and create the user
-    # hashed_password = hash_password(signup_data.password)
-    
     try:
-        create_user(db, signup_data.email,signup_data.password , signup_data.display_name)
-    except Exception:
+        # Hash the password (you can assume hash_password is already defined elsewhere)
+        create_user(db, signup_data.email, signup_data.password, signup_data.display_name)
+    except Exception as e:
         db.rollback()
+        logger.error(f"Error creating user: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error during user creation")
 
     # Step 3: Generate the verification token
     try:
         generated_verify_token = create_verify_token({"sub": signup_data.email})
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error generating verification token: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error generating verification token")
 
     # Step 4: Prepare the verification email
     verification_link = f"http://localhost:8000/user/verify/?token={generated_verify_token}"
     
-    # Load email template
-    template_path = 'auth/mail/template.html'
-    html_content = load_email_template(template_path)
-
-    # Replace the placeholder in the template with the actual verification link
-    html_content = html_content.replace("{{ verification_link }}", verification_link)
+    # Use `pathlib.Path` to ensure cross-platform compatibility
+    template_path = Path('auth', 'mail', 'template.html')
     
-    # Prepare the message
+    try:
+        # Load the email template and replace the placeholder with the actual verification link
+        html_content = load_email_template(template_path)
+        html_content = html_content.replace("{{ verification_link }}", verification_link)
+    except FileNotFoundError as e:
+        logger.error(f"Email template not found: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Email template not found")
+
+    # Prepare the message schema
     message = MessageSchema(
         subject="Verify your Email",
         recipients=[signup_data.email],
