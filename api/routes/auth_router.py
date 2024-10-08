@@ -17,7 +17,6 @@ from auth.auth import authenticate_user
 import os
 
 auth_router = APIRouter()
-SECURE_COOKIES = os.getenv("HELLO") == "production"
 
 @auth_router.post("/signup/", status_code=status.HTTP_201_CREATED)
 async def sign_up(
@@ -103,8 +102,7 @@ def login(
     # Step 5: Generate tokens and set them in the response cookies
     tokens = generate_and_set_tokens(
         response,
-        {"sub": user.user_id, "email": user.email, "session_id": session_id},
-        secure=SECURE_COOKIES
+        {"sub": user.user_id, "email": user.email, "session_id": session_id}
     )
 
     return {
@@ -140,7 +138,7 @@ def refresh_access_token(response: Response, request: Request):
     if not user_id or not email:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token payload")
 
-    tokens = generate_and_set_tokens(response, {"sub": user_id, "email": email}, SECURE_COOKIES)
+    tokens = generate_and_set_tokens(response, {"sub": user_id, "email": email})
     return {
         "access_token": tokens["access_token"],
         "refresh_token": tokens["refresh_token"]

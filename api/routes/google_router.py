@@ -167,7 +167,7 @@ async def set_cookies(response: Response):
     if not user or 'user_email' not in user:
         raise HTTPException(status_code=400, detail="User email not found in results")
 
-    generate_and_set_tokens(response, {"sub": user['user_id'], "email": user['user_email']}, secure=True)
+    generate_and_set_tokens(response, {"sub": user['user_id'], "email": user['user_email']})
     return {"message": "Cookies set successfully"}
 
 # SSE for real-time updates
