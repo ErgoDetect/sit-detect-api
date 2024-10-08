@@ -3,7 +3,7 @@ from typing import List, Optional
 from fastapi import HTTPException
 from pydantic import EmailStr
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 import random
 import string
 from auth.auth_utils import hash_password
@@ -29,31 +29,35 @@ def generate_unique_user_id(length=21) -> str:
 def create_user(db: Session, email: EmailStr, password: str, display_name: str) -> dict:
     """
     Create a new user with a unique user ID, email, hashed password, and display name.
+    
     Args:
         db (Session): SQLAlchemy database session.
         email (EmailStr): The email address of the user.
         password (str): The user's plaintext password.
         display_name (str): The user's display name.
+    
     Returns:
         dict: A success message with user ID.
+    
     Raises:
-        HTTPException: If the email is already registered.
+        HTTPException: If the email is already registered or an error occurs during creation.
     """
-    # Check if the email is already registered
-    existing_user = db.query(User).filter(User.email == email, User.sign_up_method == 'email').first()
-    if existing_user:
+    # Step 1: Check if the email is already registered
+    existing_user = db.query(User).filter(User.email == email).first()
+    if existing_user and existing_user.sign_up_method == "email":
         raise HTTPException(status_code=400, detail="Email already registered with email sign-up method.")
 
-    # Generate a unique user_id
+    # Step 2: Generate a unique user_id
     user_id = generate_unique_user_id()
-    
-    # Hash the password
+
+    # Step 3: Hash the password
     try:
         hashed_password = hash_password(password)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error hashing password: {str(e)}")
+        logger.error(f"Error hashing password: {e}")
+        raise HTTPException(status_code=500, detail="Error hashing password")
 
-    # Create the user instance
+    # Step 4: Create the user instance
     db_user = User(
         user_id=user_id,
         email=email,
@@ -63,15 +67,21 @@ def create_user(db: Session, email: EmailStr, password: str, display_name: str) 
         verified=False  # Default user is not verified on creation
     )
 
+    # Step 5: Save to database
     try:
         db.add(db_user)
         db.commit()
         db.refresh(db_user)
+    except IntegrityError as e:
+        db.rollback()
+        logger.error(f"Integrity error: {e}")
+        raise HTTPException(status_code=400, detail="User ID or email already exists.")
     except SQLAlchemyError as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error creating user: {str(e)}")
+        logger.error(f"SQLAlchemy error during user creation: {e}")
+        raise HTTPException(status_code=500, detail="Error creating user in database.")
 
-    return {"message": "User created successfully", "user_id": db_user.user_id}
+    return {"message": "User created successfully"}
 
 ### User creation for Google sign-up
 def create_user_google(db: Session, user_id: str, user_email: EmailStr) -> dict:
@@ -134,7 +144,7 @@ def verify_user_email(db: Session, email: EmailStr) -> User:
     return user
 
 ### Retrieve user by email
-def get_user_by_email(db: Session, email: EmailStr, sign_up_method: Optional[str] = None) -> User:
+def get_user_by_email(db: Session, email: EmailStr, sign_up_method: str) -> User:
     """
     Get a user by their email and sign-up method.
     Args:
