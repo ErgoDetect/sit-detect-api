@@ -1,5 +1,5 @@
 import logging
-from typing import List
+from typing import List, Optional
 from fastapi import HTTPException
 from pydantic import EmailStr
 from sqlalchemy.orm import Session
@@ -134,7 +134,7 @@ def verify_user_email(db: Session, email: EmailStr) -> User:
     return user
 
 ### Retrieve user by email
-def get_user_by_email(db: Session, email: EmailStr, sign_up_method: str) -> User:
+def get_user_by_email(db: Session, email: EmailStr, sign_up_method: Optional[str] = None) -> User:
     """
     Get a user by their email and sign-up method.
     Args:
