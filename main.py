@@ -116,7 +116,6 @@ async def auth_status(request: Request, db: Session = Depends(get_db)):
                 model.UserSession.device_identifier == device_mac
             ).first()
 
-
             if user_session:
                 return {"status": "Authenticated", "message": "Session valid", "user_id": user_id}
             else:

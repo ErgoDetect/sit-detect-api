@@ -1,12 +1,13 @@
 from fastapi import HTTPException,status
 from sqlalchemy.orm import Session
 from auth.auth_utils import hash_password, verify_password
+from database.crud import get_user_by_email
 from database.model import User
 
 
 def authenticate_user(db: Session, email: str, password: str):
     # Query the user from the database using the email
-    user = db.query(User).filter(User.email == email).first()
+    user = get_user_by_email(db, email,sign_up_method="email")
     email_verified = db.query(User).filter(User.email == email,User.verified == True).first()
     
     if user is None:
