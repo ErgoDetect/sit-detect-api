@@ -13,6 +13,21 @@ from database.model import User
 user_router = APIRouter()
 logger = logging.getLogger(__name__)
 
+import logging
+import os
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
+from fastapi.responses import HTMLResponse
+from database import get_db
+from database.model import User
+from utils import check_token, load_email_template  # Assumed utility functions
+
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+user_router = APIRouter()
+
 @user_router.get("/verify/", status_code=200, response_class=HTMLResponse)
 def verify_user_mail(token: str, db: Session = Depends(get_db)):
     """
@@ -34,13 +49,16 @@ def verify_user_mail(token: str, db: Session = Depends(get_db)):
 
         # Check if the user is already verified
         if user.verified:
-            return {"message": "User is already verified"}
+            return HTMLResponse(content="<h1>User is already verified</h1>", status_code=200)
 
         # Mark the user as verified
         user.verified = True
         db.commit()
-        
-        template_path = 'auth/mail/success_verify.html'
+
+        # Use `pathlib.Path` to construct a cross-platform file path for the HTML template
+        template_path = Path('auth', 'mail', 'success_verify.html')
+
+        # Load the email verification template (assumed to be a utility function)
         html_content = load_email_template(template_path)
 
         return HTMLResponse(content=html_content, status_code=200)
@@ -48,6 +66,10 @@ def verify_user_mail(token: str, db: Session = Depends(get_db)):
     except SQLAlchemyError as e:
         logger.error(f"Database error during email verification: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+    except Exception as e:
+        logger.error(f"Unexpected error during email verification: {e}")
+        raise HTTPException(status_code=500, detail="Unexpected internal error")
+
 
 
 @user_router.delete("/delete/", status_code=status.HTTP_204_NO_CONTENT)
