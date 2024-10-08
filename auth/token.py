@@ -100,7 +100,7 @@ def get_token_expiration(token: str) -> Tuple[datetime, datetime]:
 
     return exp_datetime_utc, exp_datetime_local
 
-def set_token_cookies(response: Response, access_token: str, refresh_token: str, secure: bool = True) -> None:
+def set_token_cookies(response: Response, access_token: str, refresh_token: str) -> None:
     """
     Set access and refresh tokens as HTTP-only cookies.
 
@@ -117,10 +117,11 @@ def set_token_cookies(response: Response, access_token: str, refresh_token: str,
     response.set_cookie(
         key="access_token", 
         value=access_token, 
-        httponly=True, 
-        secure=secure,
+        httponly=False, 
+        secure=True,
         expires=int(access_token_exp_utc.timestamp()), 
-        path="/"
+        path="/",
+        samesite="none"
         
     )
     
@@ -128,13 +129,14 @@ def set_token_cookies(response: Response, access_token: str, refresh_token: str,
     response.set_cookie(
         key="refresh_token", 
         value=refresh_token, 
-        httponly=True, 
-        secure=secure,
+        httponly=False, 
+        secure=True,
         expires=int(refresh_token_exp_utc.timestamp()), 
-        path="/"
+        path="/",
+        samesite="none"
     )
 
-def generate_and_set_tokens(response: Response, data: Dict[str, Any], secure: bool = True) -> Dict[str, str]:
+def generate_and_set_tokens(response: Response, data: Dict[str, Any]) -> Dict[str, str]:
     """
     Generate access and refresh tokens and set them as HTTP-only cookies.
 
@@ -149,7 +151,7 @@ def generate_and_set_tokens(response: Response, data: Dict[str, Any], secure: bo
     refresh_token = create_refresh_token(data)
     
     # Set cookies for both tokens
-    set_token_cookies(response, access_token, refresh_token, secure)
+    set_token_cookies(response, access_token, refresh_token)
 
     return {"access_token": access_token, "refresh_token": refresh_token}
 

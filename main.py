@@ -40,7 +40,7 @@ logger.info("Loaded .env file")
 app = FastAPI()
 
 # CORS configuration
-origins = ["http://localhost:1212","ergodetect://"]
+origins = ["http://localhost:1212"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
