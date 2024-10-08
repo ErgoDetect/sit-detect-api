@@ -1,4 +1,5 @@
 from datetime import timedelta
+import logging
 from typing import Dict
 import uuid
 from fastapi import (
@@ -15,9 +16,9 @@ from database.model import User, UserSession
 from database.schemas.Auth import LoginResponse, SignUpRequest, LoginRequest
 from auth.auth import authenticate_user
 import os
-from dotenv import load_dotenv
-load_dotenv()
-
+# from dotenv import load_dotenv
+# load_dotenv()
+logger = logging.getLogger(__name__)
 auth_router = APIRouter()
 
 @auth_router.post("/signup/", status_code=status.HTTP_201_CREATED)
@@ -27,7 +28,7 @@ async def sign_up(
     db: Session = Depends(get_db)
 ):
     # Step 1: Check if the email is already registered
-    if get_user_by_email(db, email=signup_data.email):
+    if get_user_by_email(db, email=signup_data.email,sign_up_method="email"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
     
     # Step 2: Hash the password and create the user
@@ -48,8 +49,8 @@ async def sign_up(
     # Step 4: Prepare the verification email
     verification_link = f"http://localhost:8000/user/verify/?token={generated_verify_token}"
     
-    # Load email template
-    template_path = 'auth/mail/template.html'
+    template_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "auth", "mail", "template.html"))
+    logger.info(f"Template path: {template_path}")
     html_content = load_email_template(template_path)
 
     # Replace the placeholder in the template with the actual verification link
