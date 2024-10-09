@@ -1,3 +1,4 @@
+import logging
 from typing import Dict, Any, Tuple
 from fastapi import  HTTPException, Response
 from fastapi.websockets import WebSocketState
@@ -6,8 +7,9 @@ import os
 from datetime import datetime, timedelta, timezone
 import pytz
 from dotenv import load_dotenv
-load_dotenv()
 
+
+logger = logging.getLogger(__name__)
 # Constants for JWT configuration
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
@@ -188,7 +190,25 @@ def check_token(token: str, token_type: str) -> dict:
         dict: The token's status and corresponding message.
     """
     try:
-        sub = get_sub_from_token(token)
-        return {"status": "Authenticated", "sub": sub, "message": f"{token_type.capitalize()} token is valid"}
-    except HTTPException as e:
-        return {"status": e.detail.split()[0], "message": f"{token_type.capitalize()} token is {e.detail.lower()}"}
+        user_id = get_sub_from_token(token)  # Implement your JWT decoding logic here
+        return {
+            "status": "Authenticated",
+            "user_id": user_id,
+            "message": f"{token_type.capitalize()} token is valid"
+        }
+    except jwt.ExpiredSignatureError:
+        return {
+            "status": "Expired",
+            "message": f"{token_type.capitalize()} token has expired."
+        }
+    except jwt.PyJWTError:
+        return {
+            "status": "Invalid",
+            "message": f"{token_type.capitalize()} token is invalid."
+        }
+    except Exception as e:
+        logger.error(f"Unexpected error during token validation: {str(e)}")
+        return {
+            "status": "Error",
+            "message": f"An error occurred while validating the {token_type} token."
+        }
