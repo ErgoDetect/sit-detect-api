@@ -9,6 +9,7 @@ import pytz
 from dotenv import load_dotenv
 
 
+load_dotenv()  # Need for windows
 logger = logging.getLogger(__name__)
 # Constants for JWT configuration
 SECRET_KEY = os.getenv("SECRET_KEY")
