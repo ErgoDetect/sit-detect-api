@@ -28,18 +28,24 @@ def verify_user_mail(token: str, db: Session = Depends(get_db)):
             raise HTTPException(status_code=400, detail="Invalid token: 'sub' claim missing")
 
         # Query the user from the database
-        user = db.query(User).filter(User.email == user_mail).first()
+        user = db.query(User).filter(User.email == user_mail,User.sign_up_method == "email").first()
 
-        if not user:
+        if not user :
             raise HTTPException(status_code=404, detail="User not found")
 
         # Mark the user as verified
         user.verified = True
-        db.commit()
+        
+        try:
+            db.commit()
+        except Exception as e:
+            logger.error(f"Error during commit: {e}")
+            db.rollback()  # Roll back in case of failure
+            raise HTTPException(status_code=500, detail="Error committing transaction")
+
         
         # Load the success email template and return it
         template_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "auth", "mail", "success_verify.html"))
-        logger.info(f"Template path: {template_path}")
         
         html_content = load_email_template(template_path)
 

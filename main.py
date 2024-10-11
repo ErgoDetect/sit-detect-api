@@ -107,47 +107,85 @@ async def auth_status(request: Request, db: Session = Depends(get_db)):
 
     # Validate access token
     if access_token:
-        access_result = check_token(access_token,"access")
-        if access_result["status"] == "Authenticated":
-            user_id = access_result["sub"]
-            # Verify session in the database
-            user_session = db.query(model.UserSession).filter(
-                model.UserSession.user_id == user_id,
-                model.UserSession.device_identifier == device_mac
-            ).first()
+        access_result = check_token(access_token, "access")
+        if access_result.get("status") == "Authenticated":
+            user_id = access_result.get("user_id")
+            if user_id:
+                # Verify session in the database
+                user_session = db.query(model.UserSession).filter(
+                    model.UserSession.user_id == user_id,
+                    model.UserSession.device_identifier == device_mac
+                ).first()
 
-            if user_session:
-                return {"status": "Authenticated", "message": "Session valid", "user_id": user_id}
+                if user_session:
+                    return {
+                        "status": "Authenticated",
+                        "message": "Session valid",
+                        "user_id": user_id
+                    }
+                else:
+                    return {
+                        "status": "LoginRequired",
+                        "message": "Device mismatch, login required"
+                    }
             else:
-                return {"status": "LoginRequired", "message": "Device mismatch, login required"}
-        elif access_result["status"] == "Expired" and refresh_token:
-            # Access token expired, check refresh token
-            refresh_result = check_token(refresh_token, "refresh")
-            if refresh_result["status"] == "Authenticated":
-                user_id = refresh_result["user_id"]
+                logger.warning("Authenticated access token missing 'user_id' field.")
                 return {
-                    "status": "Refresh",
-                    "message": "Access token expired, but refresh token is valid",
-                    "user_id": user_id
+                    "status": "LoginRequired",
+                    "message": "Invalid access token structure."
                 }
+
+        elif access_result.get("status") == "Expired" and refresh_token:
+            refresh_result = check_token(refresh_token, "refresh")
+            if refresh_result.get("status") == "Authenticated":
+                user_id = refresh_result.get("user_id")
+                if user_id:
+                    return {
+                        "status": "Refresh",
+                        "message": "Access token expired, but refresh token is valid",
+                        "user_id": user_id
+                    }
+                else:
+                    logger.warning("Authenticated refresh token missing 'user_id' field.")
+                    return {
+                        "status": "LoginRequired",
+                        "message": "Invalid refresh token structure."
+                    }
 
     # If no valid access token, check refresh token
     if refresh_token:
-        refresh_result = check_token(refresh_token,"refresh")
-        if refresh_result["status"] == "Authenticated":
-            user_id = refresh_result["user_id"]
-            user_session = db.query(model.UserSession).filter(
-                model.UserSession.user_id == user_id,
-                model.UserSession.device_identifier == device_mac
-            ).first()
+        refresh_result = check_token(refresh_token, "refresh")
+        if refresh_result.get("status") == "Authenticated":
+            user_id = refresh_result.get("user_id")
+            if user_id:
+                user_session = db.query(model.UserSession).filter(
+                    model.UserSession.user_id == user_id,
+                    model.UserSession.device_identifier == device_mac
+                ).first()
 
-            if user_session:
-                return {"status": "Refresh", "message": "No access token, but refresh token is valid", "user_id": user_id}
+                if user_session:
+                    return {
+                        "status": "Refresh",
+                        "message": "No access token, but refresh token is valid",
+                        "user_id": user_id
+                    }
+                else:
+                    return {
+                        "status": "LoginRequired",
+                        "message": "Device mismatch, login required"
+                    }
             else:
-                return {"status": "LoginRequired", "message": "Device mismatch, login required"}
+                logger.warning("Authenticated refresh token missing 'user_id' field.")
+                return {
+                    "status": "LoginRequired",
+                    "message": "Invalid refresh token structure."
+                }
 
     # If no valid tokens or device mismatch, prompt login required
-    return {"status": "LoginRequired", "message": "No valid tokens found, or device mismatch. Please log in again."}
+    return {
+        "status": "LoginRequired",
+        "message": "No valid tokens found, or device mismatch. Please log in again."
+    }
 
 
 app.include_router(auth_status_router, prefix='/auth', tags=["Authentication"])
