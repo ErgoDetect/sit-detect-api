@@ -1,19 +1,21 @@
 import asyncio
-from datetime import timedelta
+from datetime import timedelta, datetime
 import json
 import logging
 import uuid
-from fastapi import APIRouter, Request, Depends, Response, HTTPException
+from fastapi import APIRouter, Header, Request, Depends, Response, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from google_auth_oauthlib.flow import Flow
-from database.crud import create_user_google, delete_user_sessions, get_user_by_email, get_user_by_id, get_user_sessions
+from database.crud import (
+    create_user_google, 
+    delete_user_sessions, 
+    get_user_by_email, 
+)
 from database.database import get_db
-from auth.token import generate_and_set_tokens, get_current_time
+from auth.token import generate_and_set_tokens
 import os
-# from dotenv import load_dotenv
-# load_dotenv()
-from database.model import UserSession
+from database.model import OAuthState, User, UserSession
 
 # Initialize Logging
 logging.basicConfig(level=logging.INFO)
@@ -32,9 +34,9 @@ if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
 
 REDIRECT_URI = "http://localhost:8000/auth/google/callback/"
 
-# Dictionary to store OAuth flow state and user information securely
-oauth_results = {}
-oauth_lock = asyncio.Lock()  # Ensures safe concurrent access
+# Helper function to get current time
+def get_current_time():
+    return datetime.utcnow()
 
 # OAuth Flow configuration
 def get_google_flow():
@@ -59,17 +61,20 @@ def get_google_flow():
 
 google_router = APIRouter()
 
-# Helper function to store user info
-async def store_oauth_result(key, value):
-    async with oauth_lock:
-        oauth_results[key] = value
-
-async def get_oauth_result(key):
-    async with oauth_lock:
-        return oauth_results.get(key)
+# Helper function to store OAuth state
+def store_oauth_state(db: Session, state: str, device_identifier: str):
+    """Stores OAuth state with expiration."""
+    oauth_state = OAuthState(
+        state=state,
+        device_identifier=device_identifier,
+        expires_at=get_current_time() + timedelta(minutes=15)  # State expires in 15 minutes
+    )
+    db.add(oauth_state)
+    db.commit()
 
 # Helper function to exchange code for Google user info
-async def exchange_google_code_for_user_info(flow, code):
+def exchange_google_code_for_user_info(flow, code):
+    """Fetches Google user info using OAuth code."""
     flow.fetch_token(code=code)
     session = flow.authorized_session()
     user_info = session.get("https://www.googleapis.com/oauth2/v1/userinfo").json()
@@ -79,12 +84,13 @@ async def exchange_google_code_for_user_info(flow, code):
 
 # Step 1: Initiate Google OAuth Flow
 @google_router.get("/login/")
-async def login_with_google(request: Request):
-    try:
-        device_identifier = request.headers.get("Device-Identifier")
-        if not device_identifier:
-            raise HTTPException(status_code=400, detail="Device identifier is missing")
+async def login_with_google(request: Request, db: Session = Depends(get_db)):
+    """Initiates the Google OAuth flow."""
+    device_identifier = request.headers.get("Device-Identifier")
+    if not device_identifier:
+        raise HTTPException(status_code=400, detail="Device identifier is missing")
 
+    try:
         flow = get_google_flow()
         authorization_url, state = flow.authorization_url(
             access_type="offline",
@@ -92,9 +98,8 @@ async def login_with_google(request: Request):
             prompt="select_account",
         )
 
-        # Store the state and device identifier for the callback
-        await store_oauth_result('state', state)
-        await store_oauth_result('device_identifier', device_identifier)
+        # Store OAuth state
+        store_oauth_state(db, state, device_identifier)
         return JSONResponse(content={"url": authorization_url})
 
     except Exception as e:
@@ -104,88 +109,103 @@ async def login_with_google(request: Request):
 # Step 2: Callback Route for Google OAuth
 @google_router.get("/callback/")
 async def callback_from_google(response: Response, request: Request, db: Session = Depends(get_db)):
-    try:
-        # Step 1: Handle OAuth state and code
-        flow = get_google_flow()
-        code = request.query_params.get("code")
-        state = request.query_params.get("state")
+    """Handles the Google OAuth callback and user session management."""
+    code = request.query_params.get("code")
+    state = request.query_params.get("state")
 
-        stored_state = await get_oauth_result('state')
-        if not code or state != stored_state:
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing state or authorization code.")
+
+    try:
+        # Retrieve OAuth state and verify its existence
+        stored_state = db.query(OAuthState).filter(OAuthState.state == state).first()
+        if not stored_state:
             raise HTTPException(status_code=400, detail="Invalid state or authorization code.")
 
-        # Step 2: Exchange authorization code for user info
-        user_info = await exchange_google_code_for_user_info(flow, code)
-        if not user_info or 'email' not in user_info:
-            raise HTTPException(status_code=400, detail="Failed to retrieve user info from Google.")
+        # Exchange authorization code for user info
+        flow = get_google_flow()
+        user_info = exchange_google_code_for_user_info(flow, code)
 
-        # Step 3: Create or update user in database
-        user = get_user_by_email(db, email=user_info['email'],sign_up_method="google")
+        # Create or update user in the database
+        user = get_user_by_email(db, email=user_info['email'], sign_up_method="google")
         if not user:
-            create_user_google(db, user_id=user_info['id'], user_email=user_info['email'])
+            user = create_user_google(db, user_id=user_info['id'], user_email=user_info['email'])
 
-        # Step 4: Manage user sessions
-        user_sessions = get_user_sessions(db, user_id=user_info['id'])
-        device_identifier = await get_oauth_result('device_identifier')
+        # Manage user sessions
+        device_identifier = stored_state.device_identifier
+        delete_user_sessions(db, user_id=user_info['id'], device_identifier=device_identifier)
 
-        if not device_identifier:
-            raise HTTPException(status_code=400, detail="Device identifier missing")
-
-        # Delete any existing sessions for the device
-        if user_sessions:
-            delete_user_sessions(db, user_id=user_info['id'], device_identifier=device_identifier)
-
-        # Step 5: Create a new session for the user
-        session_id = str(uuid.uuid4())
-        current_time = get_current_time()
+        # Create a new user session
         new_session = UserSession(
-            session_id=session_id,
+            session_id=str(uuid.uuid4()),
             user_id=user_info['id'],
             device_identifier=device_identifier,
-            created_at=current_time,
-            expires_at=current_time + timedelta(hours=1)  # Session valid for 1 hour
+            created_at=get_current_time(),
+            expires_at=get_current_time() + timedelta(hours=1)  # Session valid for 1 hour
         )
         db.add(new_session)
-        db.commit()  # Commit the new session to the database
 
-        # Step 6: Store user info for future use or SSE
-        await store_oauth_result('user', {
-            'user_id': user_info['id'],
-            'user_email': user_info['email'],
-            'device_identifier': device_identifier,
-            'success': True
-        })
+        # Mark OAuth state as successful and remove it
+        stored_state.success = True
 
-        return {"message": "Callback processed successfully, tokens set"}
+        # Commit all changes in a single transaction
+        db.commit()
+
+        return {"message": "Callback successful"}
 
     except Exception as e:
-        # Enhanced error logging
-        logger.error(f"Error during Google token exchange: {e}")
+        logger.exception("Error during Google token exchange: %s", e)
         raise HTTPException(status_code=500, detail="Error during token exchange with Google.")
-
-
 
 # Set cookies after Google authentication
 @google_router.get("/set-cookies/")
-async def set_cookies(response: Response):
-    user = await get_oauth_result('user')
-    if not user or 'user_email' not in user:
+async def set_cookies(request: Request, response: Response, db: Session = Depends(get_db)):
+    """Sets authentication cookies for the user."""
+    
+    device_identifier = request.headers.get("Device-Identifier")
+    user = db.query(User).join(UserSession).filter(UserSession.device_identifier == device_identifier).first()
+
+    if not user:
+        raise HTTPException(status_code=400, detail="User not found")
+    if not user.email:
         raise HTTPException(status_code=400, detail="User email not found in results")
 
-    generate_and_set_tokens(response, {"sub": user['user_id'], "email": user['user_email']})
+    generate_and_set_tokens(response, {"sub": user.user_id, "email": user.email})
     return {"message": "Cookies set successfully"}
 
 # SSE for real-time updates
 @google_router.get("/sse/")
-async def google_sse():
+async def google_sse(device_identifier: str, db: Session = Depends(get_db)):
+    """Server-Sent Events for real-time updates."""
+
     async def event_generator():
-        # Wait until 'user' is set in oauth_results
+        timeout = 60  # Set a shorter timeout for debugging
+        start_time = get_current_time()
+
         while True:
-            user = await get_oauth_result('user')
-            if user:
-                yield f"data: {json.dumps(user)}\n\n"
-                break
-            await asyncio.sleep(1)
-            yield ": keep-alive\n\n"  # Keep the SSE connection alive
+                # Fetch the OAuth state for the given device_identifier
+                status = db.query(OAuthState).filter(
+                    OAuthState.device_identifier == device_identifier,
+                    OAuthState.success == True
+                ).first()
+
+                # Log each check
+                print(f"Checking OAuth state for device_identifier: {device_identifier}")
+
+                # If success is True, send success event
+                if status:
+                    print(f"OAuth state success found for device_identifier: {device_identifier}")
+                    yield f"data: {json.dumps({'success': True})}\n\n"
+                    
+                    # Now, delete the status after successfully notifying the client
+                    db.delete(status)
+                    logger.info(f"Deleted OAuth state for device_identifier: {device_identifier}")
+                    db.commit()  # Ensure the deletion is committed
+                    break  # Stop after success
+
+                await asyncio.sleep(1)
+
+                # Send keep-alive message
+                yield ": keep-alive\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
