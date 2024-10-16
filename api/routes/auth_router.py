@@ -5,15 +5,18 @@ import uuid
 from fastapi import (
     APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
 )
+from fastapi.responses import RedirectResponse
 from fastapi_mail import MessageSchema, MessageType
 from sqlalchemy.orm import Session
+from api.request_user import get_current_user
 from auth.mail.mail_config import load_email_template, send_verification_email
 from auth.token import create_verify_token, generate_and_set_tokens, get_current_time, verify_token
 from database.crud import delete_user_sessions, get_user_by_email, create_user
 from database.database import get_db
-from database.model import User, UserSession
+from database.model import  User, UserSession
 from database.schemas.Auth import LoginResponse, SignUpRequest, LoginRequest
 from auth.auth import authenticate_user
+
 
 import os
 # from dotenv import load_dotenv
@@ -21,6 +24,7 @@ import os
 
 logger = logging.getLogger(__name__)
 auth_router = APIRouter()
+
 
 @auth_router.post("/signup/", status_code=status.HTTP_201_CREATED)
 async def sign_up(
@@ -125,14 +129,36 @@ def login(
     }
 
 
-@auth_router.post("/logout/")
-def logout(response: Response):
-    # Step 1: Clear cookies
-    response.delete_cookie("access_token", path="/")
-    response.delete_cookie("refresh_token", path="/")
+@auth_router.post("/logout/", status_code=status.HTTP_200_OK)
+async def logout(request: Request, response: Response, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     
-    # Step 2: Return Google Logout URL
-    return {"message": "Logged out successfully", "google_logout_url": "https://accounts.google.com/Logout"}
+    # Step 1: Retrieve the Device-Identifier header
+    device_identifier = request.headers.get('Device-Identifier')
+    if not device_identifier:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Device identifier missing")
+
+    # Step 2: Delete user sessions based on the device identifier
+    delete_user_sessions(db, current_user['user_id'], device_identifier)
+    
+    
+    user_id =current_user["user_id"]
+    
+    login_method = db.query(User).filter(User.user_id == user_id).first().sign_up_method
+    
+    # if login_method == "google":
+        
+
+    # Step 3: Clear authentication cookies
+    response.delete_cookie("access_token",httponly=False, 
+
+        path="/",
+        samesite="none")  # Secure should be True in production
+    response.delete_cookie("refresh_token",httponly=False, 
+        path="/",
+        samesite="none")  # Secure should be True in production
+
+    
+    return {"Logout Successful"}
 
 
 @auth_router.post("/refresh-token/", response_model=Dict[str, str])
