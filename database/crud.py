@@ -7,7 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 import random
 import string
 from auth.auth_utils import hash_password
-from database.model import User, UserSession
+from database.model import User, UserSession,EmailUser,GoogleUser
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ def generate_unique_user_id(length=21) -> str:
 ### User creation for email/password sign-up
 def create_user(db: Session, email: EmailStr, password: str, display_name: str) -> dict:
     """
-    Create a new user with a unique user ID, email, hashed password, and display name.
+    Create a new EmailUser with a unique user ID, email, hashed password, and display name.
     
     Args:
         db (Session): SQLAlchemy database session.
@@ -57,11 +57,11 @@ def create_user(db: Session, email: EmailStr, password: str, display_name: str) 
         logger.error(f"Error hashing password: {e}")
         raise HTTPException(status_code=500, detail="Error hashing password")
 
-    # Step 4: Create the user instance
-    db_user = User(
+    # Step 4: Create the EmailUser instance (store in email_users table)
+    db_user = EmailUser(
         user_id=user_id,
         email=email,
-        password=hashed_password,
+        password=hashed_password,  # Store hashed password in EmailUser
         display_name=display_name,
         sign_up_method='email',
         verified=False  # Default user is not verified on creation
@@ -81,7 +81,8 @@ def create_user(db: Session, email: EmailStr, password: str, display_name: str) 
         logger.error(f"SQLAlchemy error during user creation: {e}")
         raise HTTPException(status_code=500, detail="Error creating user in database.")
 
-    return {"message": "User created successfully"}
+    return {"message": "User created successfully", "user_id": db_user.user_id}
+
 
 ### User creation for Google sign-up
 def create_user_google(db: Session, user_id: str, user_email: EmailStr) -> dict:
@@ -103,10 +104,9 @@ def create_user_google(db: Session, user_id: str, user_email: EmailStr) -> dict:
         raise HTTPException(status_code=400, detail="Email already registered with Google sign-up.")
 
     # Create the Google user if it doesn't exist or is registered with a different method
-    db_user = User(
+    db_user = GoogleUser(
         user_id=user_id,
         email=user_email,
-        password=None,  # No password for Google sign-up
         display_name='Google User',  # Default display name, can be changed later
         sign_up_method='google',
         verified=True  # Google users are considered verified
@@ -124,37 +124,39 @@ def create_user_google(db: Session, user_id: str, user_email: EmailStr) -> dict:
     return {"message": "Google user created successfully"}
 
 ### Verify user email
-def verify_user_email(db: Session, email: EmailStr) -> User:
+def verify_user_email(db: Session, email: EmailStr) -> EmailUser:
     """
-    Verify a user's email by setting their verified status to True.
+    Verify an email user's email by setting their verified status to True.
     Args:
         db (Session): SQLAlchemy database session.
         email (EmailStr): The email address to verify.
     Returns:
-        User: The updated User object if the email is found.
+        EmailUser: The updated EmailUser object if the email is found.
     Raises:
-        HTTPException: If the email is not found.
+        HTTPException: If the email is not found or the user is not an email-based user.
     """
-    user = db.query(User).filter(User.email == email).first()
+    user = db.query(EmailUser).filter(EmailUser.email == email).first()
+
     if not user:
-        raise HTTPException(status_code=404, detail="User not found.")
+        raise HTTPException(status_code=404, detail="Email user not found.")
     
     user.verified = True
     db.commit()
     return user
 
+
 ### Retrieve user by email
-def get_user_by_email(db: Session, email: EmailStr, sign_up_method: str) -> User:
+def get_user_by_email(db: Session, email: EmailStr,sign_up_method:str) -> User:
     """
-    Get a user by their email and sign-up method.
+    Get a user by their email.
     Args:
         db (Session): SQLAlchemy database session.
         email (EmailStr): The email address of the user.
-        sign_up_method (str): Sign-up method (e.g., 'email', 'google').
     Returns:
         User: The User object if found, else None.
     """
     return db.query(User).filter(User.email == email, User.sign_up_method == sign_up_method).first()
+
 
 ### Retrieve user by user ID
 def get_user_by_id(db: Session, user_id: str) -> User:
@@ -168,6 +170,7 @@ def get_user_by_id(db: Session, user_id: str) -> User:
     """
     return db.query(User).filter(User.user_id == user_id).first()
 
+
 ### Delete user by email
 def delete_user(db: Session, email: str) -> None:
     """
@@ -179,7 +182,7 @@ def delete_user(db: Session, email: str) -> None:
         HTTPException: If the user is not found or there is an error deleting the user.
     """
     db_user = db.query(User).filter(User.email == email).first()
-    
+
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     
@@ -189,6 +192,7 @@ def delete_user(db: Session, email: str) -> None:
     except SQLAlchemyError as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error deleting user: {str(e)}")
+
 
 ### Retrieve user sessions by user ID
 def get_user_sessions(db: Session, user_id: str) -> List[UserSession]:
