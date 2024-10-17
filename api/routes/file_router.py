@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 file_router = APIRouter()
 @file_router.post("/upload/video/", status_code=status.HTTP_201_CREATED)
-async def file_upload(file,correct_frame,db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+async def file_upload(file,db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     object_data = json.loads(file)
     
     detector = detection()
