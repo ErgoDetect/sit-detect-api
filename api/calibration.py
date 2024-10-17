@@ -6,6 +6,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+
 def calibrate_camera(image_paths, resolution=None):
     chessboard_size = (9, 6)
     size_of_chessboard_squares_mm = 20
@@ -14,7 +15,9 @@ def calibrate_camera(image_paths, resolution=None):
 
     # Prepare object points for a standard chessboard pattern
     objp = np.zeros((chessboard_size[0] * chessboard_size[1], 3), np.float32)
-    objp[:, :2] = np.mgrid[0:chessboard_size[0], 0:chessboard_size[1]].T.reshape(-1, 2)
+    objp[:, :2] = np.mgrid[0 : chessboard_size[0], 0 : chessboard_size[1]].T.reshape(
+        -1, 2
+    )
     objp *= size_of_chessboard_squares_mm
 
     objpoints = []  # 3D points in real-world space
@@ -41,9 +44,7 @@ def calibrate_camera(image_paths, resolution=None):
         ret, corners = cv.findChessboardCorners(gray, chessboard_size, None)
         if ret:
             objpoints.append(objp)
-            corners2 = cv.cornerSubPix(
-                gray, corners, (11, 11), (-1, -1), criteria
-            )
+            corners2 = cv.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
             imgpoints.append(corners2)
         else:
             logger.warning(f"Chessboard not found in image: {image_path}")
@@ -56,20 +57,22 @@ def calibrate_camera(image_paths, resolution=None):
         mean_error = calculate_reprojection_error(
             objpoints, imgpoints, rvecs, tvecs, camera_matrix, dist_coeffs
         )
-        logger.info(f"Calibration successful with mean reprojection error: {mean_error}")
+        logger.info(
+            f"Calibration successful with mean reprojection error: {mean_error}"
+        )
 
-        result_dir = Path('calibrate_result')
+        result_dir = Path("calibrate_result")
         result_dir.mkdir(parents=True, exist_ok=True)
 
         calibration_data = {
             "cameraMatrix": camera_matrix.tolist(),
             "distCoeffs": dist_coeffs.tolist(),
-            "mean_error": mean_error
+            "mean_error": mean_error,
         }
 
         calibration_json_file = result_dir / "calibration_data.json"
         try:
-            with open(calibration_json_file, 'w') as f:
+            with open(calibration_json_file, "w") as f:
                 json.dump(calibration_data, f)
             logger.info(f"Calibration results saved to {calibration_json_file}")
             return calibration_json_file, mean_error
@@ -80,7 +83,10 @@ def calibrate_camera(image_paths, resolution=None):
         logger.error("No valid images found for calibration.")
         return None, None
 
-def calculate_reprojection_error(objpoints, imgpoints, rvecs, tvecs, camera_matrix, dist_coeffs):
+
+def calculate_reprojection_error(
+    objpoints, imgpoints, rvecs, tvecs, camera_matrix, dist_coeffs
+):
     total_error = 0
     total_points = 0
     for i in range(len(objpoints)):
@@ -88,7 +94,7 @@ def calculate_reprojection_error(objpoints, imgpoints, rvecs, tvecs, camera_matr
             objpoints[i], rvecs[i], tvecs[i], camera_matrix, dist_coeffs
         )
         error = cv.norm(imgpoints[i], imgpoints_proj, cv.NORM_L2)
-        total_error += error ** 2
+        total_error += error**2
         total_points += len(imgpoints_proj)
     mean_error = np.sqrt(total_error / total_points)
     return mean_error
