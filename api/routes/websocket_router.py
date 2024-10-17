@@ -26,7 +26,7 @@ websocket_router = APIRouter()
 uuid_mudule = uuid
 
 
-@websocket_router.websocket("/results/")
+@websocket_router.websocket("/results")
 async def landmark_results(websocket: WebSocket, db: Session = Depends(get_db)):
     await websocket.accept()
     acc_token = websocket.cookies.get("access_token")

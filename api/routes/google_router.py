@@ -92,7 +92,7 @@ def exchange_google_code_for_user_info(flow, code):
 
 
 # Step 1: Initiate Google OAuth Flow
-@google_router.get("/login/")
+@google_router.get("/login")
 async def login_with_google(request: Request, db: Session = Depends(get_db)):
     """Initiates the Google OAuth flow."""
     device_identifier = request.headers.get("Device-Identifier")
@@ -184,7 +184,7 @@ async def callback_from_google(
 
 
 # Set cookies after Google authentication
-@google_router.get("/set-cookies/")
+@google_router.get("/set-cookies")
 async def set_cookies(
     request: Request, response: Response, db: Session = Depends(get_db)
 ):
@@ -208,7 +208,7 @@ async def set_cookies(
 
 
 # SSE for real-time updates
-@google_router.get("/sse/")
+@google_router.get("/sse")
 async def google_sse(device_identifier: str, db: Session = Depends(get_db)):
     """Server-Sent Events for real-time updates."""
 

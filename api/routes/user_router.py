@@ -15,7 +15,7 @@ user_router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@user_router.get("/verify/", status_code=200, response_class=HTMLResponse)
+@user_router.get("/verify", status_code=200, response_class=HTMLResponse)
 def verify_user_mail(token: str, db: Session = Depends(get_db)):
     """
     Verify a user's email using the verification token.
@@ -74,7 +74,7 @@ def verify_user_mail(token: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Unexpected internal error")
 
 
-@user_router.delete("/delete/", status_code=status.HTTP_204_NO_CONTENT)
+@user_router.delete("/delete", status_code=status.HTTP_204_NO_CONTENT)
 def delete_user_db(
     db: Session = Depends(get_db), current_user=Depends(get_current_user)
 ):

@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
+from api.routes.files_router import files_router
 from api.routes.auth_router import auth_router
 from api.routes.google_router import google_router
 from api.routes.user_router import user_router
@@ -73,6 +74,7 @@ app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
 app.include_router(user_router, prefix="/user", tags=["User"])
 app.include_router(google_router, prefix="/auth/google", tags=["Google OAuth"])
 app.include_router(websocket_router, prefix="/landmark", tags=["WebSocket"])
+app.include_router(files_router, prefix="/files", tags=["Files"])
 
 
 @app.get("/")

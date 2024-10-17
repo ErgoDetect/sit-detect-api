@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 auth_router = APIRouter()
 
 
-@auth_router.post("/signup/", status_code=status.HTTP_201_CREATED)
+@auth_router.post("/signup", status_code=status.HTTP_201_CREATED)
 async def sign_up(
     signup_data: SignUpRequest,
     background_tasks: BackgroundTasks,
@@ -117,7 +117,7 @@ async def sign_up(
     return {"message": "User created successfully, please verify your email."}
 
 
-@auth_router.post("/login/", response_model=LoginResponse)
+@auth_router.post("/login", response_model=LoginResponse)
 def login(
     request: Request,
     response: Response,
@@ -166,7 +166,7 @@ def login(
     }
 
 
-@auth_router.post("/logout/", status_code=status.HTTP_200_OK)
+@auth_router.post("/logout", status_code=status.HTTP_200_OK)
 async def logout(
     request: Request,
     response: Response,
@@ -201,7 +201,7 @@ async def logout(
     return {"Logout Successful"}
 
 
-@auth_router.get("/status/")
+@auth_router.get("/status")
 async def auth_status(request: Request, db: Session = Depends(get_db)):
     # Retrieve tokens from cookies and headers
     access_token = request.cookies.get("access_token")
@@ -306,7 +306,7 @@ async def auth_status(request: Request, db: Session = Depends(get_db)):
     }
 
 
-@auth_router.post("/refresh-token/", response_model=Dict[str, str])
+@auth_router.post("/refresh-token", response_model=Dict[str, str])
 def refresh_access_token(response: Response, request: Request):
     refresh_token = request.cookies.get("refresh_token")
     if not refresh_token:

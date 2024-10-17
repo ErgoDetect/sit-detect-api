@@ -13,12 +13,13 @@ from api.detection import detection
 from database.model import SittingSession
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 
+
 logger = logging.getLogger(__name__)
 
-file_router = APIRouter()
+files_router = APIRouter()
 
 
-@file_router.post("/upload/video/", status_code=status.HTTP_200_OK)
+@files_router.post("/upload/video", status_code=status.HTTP_200_OK)
 async def video_process_result_upload(
     file: Dict[
         str, List[Dict[str, Any]]
@@ -27,9 +28,9 @@ async def video_process_result_upload(
     current_user: dict = Depends(get_current_user),
 ):
     # Access the file list
-    object_data = file[
+    object_data = file.get(
         "file"
-    ]  # 'file' is a dict, so we access the list via file["file"]
+    )  # 'file' is a dict, so we access the list via file["file"]
 
     # Instantiate the detector and create other needed variables
     detector = detection()
@@ -79,7 +80,7 @@ async def video_process_result_upload(
         )
 
 
-@file_router.post("/upload/")
+@files_router.post("/upload/images")
 async def upload_images(
     files: List[UploadFile] = File(...), user_id: str = Depends(get_current_user)
 ):
@@ -87,6 +88,6 @@ async def upload_images(
     return await receive_upload_images(files)
 
 
-@file_router.get("/download/{filename}")
+@files_router.get("/download/{filename}")
 async def download_files(filename: str, user_id: str = Depends(get_current_user)):
     return await download_file(filename)
