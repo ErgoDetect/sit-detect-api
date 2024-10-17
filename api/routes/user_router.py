@@ -14,7 +14,8 @@ from database.model import User
 user_router = APIRouter()
 logger = logging.getLogger(__name__)
 
-@user_router.get("/verify/", status_code=200, response_class=HTMLResponse)
+
+@user_router.get("/verify", status_code=200, response_class=HTMLResponse)
 def verify_user_mail(token: str, db: Session = Depends(get_db)):
     """
     Verify a user's email using the verification token.
@@ -25,17 +26,23 @@ def verify_user_mail(token: str, db: Session = Depends(get_db)):
         user_mail = token_data.get("sub")
 
         if not user_mail:
-            raise HTTPException(status_code=400, detail="Invalid token: 'sub' claim missing")
+            raise HTTPException(
+                status_code=400, detail="Invalid token: 'sub' claim missing"
+            )
 
         # Query the user from the database
-        user = db.query(User).filter(User.email == user_mail,User.sign_up_method == "email").first()
+        user = (
+            db.query(User)
+            .filter(User.email == user_mail, User.sign_up_method == "email")
+            .first()
+        )
 
-        if not user :
+        if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
         # Mark the user as verified
         user.verified = True
-        
+
         try:
             db.commit()
         except Exception as e:
@@ -43,10 +50,18 @@ def verify_user_mail(token: str, db: Session = Depends(get_db)):
             db.rollback()  # Roll back in case of failure
             raise HTTPException(status_code=500, detail="Error committing transaction")
 
-        
         # Load the success email template and return it
-        template_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "auth", "mail", "success_verify.html"))
-        
+        template_path = os.path.abspath(
+            os.path.join(
+                os.path.dirname(__file__),
+                "..",
+                "..",
+                "auth",
+                "mail",
+                "success_verify.html",
+            )
+        )
+
         html_content = load_email_template(template_path)
 
         return HTMLResponse(content=html_content, status_code=200)
@@ -59,11 +74,9 @@ def verify_user_mail(token: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Unexpected internal error")
 
 
-
-@user_router.delete("/delete/", status_code=status.HTTP_204_NO_CONTENT)
+@user_router.delete("/delete", status_code=status.HTTP_204_NO_CONTENT)
 def delete_user_db(
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user)
+    db: Session = Depends(get_db), current_user=Depends(get_current_user)
 ):
     """
     Delete the currently authenticated user from the database.
@@ -71,15 +84,20 @@ def delete_user_db(
     try:
         # Delete all user sessions for the current user
         delete_user_sessions(db, current_user.email)
-        
+
         # Delete the user itself
         delete_user(db, current_user.email)
 
         return {"message": "User and all sessions deleted successfully"}
 
     except NoResultFound:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     except SQLAlchemyError as e:
         logger.error(f"Database error when deleting user: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )

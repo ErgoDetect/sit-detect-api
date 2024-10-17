@@ -7,10 +7,11 @@ from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 import random
 import string
 from auth.auth_utils import hash_password
-from database.model import User, UserSession,EmailUser,GoogleUser
+from database.model import User, UserSession, EmailUser, GoogleUser
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 # Helper function to generate a unique user ID
 def generate_unique_user_id(length=21) -> str:
@@ -23,29 +24,33 @@ def generate_unique_user_id(length=21) -> str:
     """
     if length < 1:
         raise ValueError("Length must be at least 1")
-    return ''.join(random.choices(string.digits, k=length))
+    return "".join(random.choices(string.digits, k=length))
+
 
 ### User creation for email/password sign-up
 def create_user(db: Session, email: EmailStr, password: str, display_name: str) -> dict:
     """
     Create a new EmailUser with a unique user ID, email, hashed password, and display name.
-    
+
     Args:
         db (Session): SQLAlchemy database session.
         email (EmailStr): The email address of the user.
         password (str): The user's plaintext password.
         display_name (str): The user's display name.
-    
+
     Returns:
         dict: A success message with user ID.
-    
+
     Raises:
         HTTPException: If the email is already registered or an error occurs during creation.
     """
     # Step 1: Check if the email is already registered
     existing_user = db.query(User).filter(User.email == email).first()
     if existing_user and existing_user.sign_up_method == "email":
-        raise HTTPException(status_code=400, detail="Email already registered with email sign-up method.")
+        raise HTTPException(
+            status_code=400,
+            detail="Email already registered with email sign-up method.",
+        )
 
     # Step 2: Generate a unique user_id
     user_id = generate_unique_user_id()
@@ -63,8 +68,8 @@ def create_user(db: Session, email: EmailStr, password: str, display_name: str) 
         email=email,
         password=hashed_password,  # Store hashed password in EmailUser
         display_name=display_name,
-        sign_up_method='email',
-        verified=False  # Default user is not verified on creation
+        sign_up_method="email",
+        verified=False,  # Default user is not verified on creation
     )
 
     # Step 5: Save to database
@@ -98,18 +103,20 @@ def create_user_google(db: Session, user_id: str, user_email: EmailStr) -> dict:
         HTTPException: If the email is already registered with Google.
     """
     existing_user = db.query(User).filter(User.email == user_email).first()
-    
+
     # If the user exists with Google sign-up, raise an error
-    if existing_user and existing_user.sign_up_method == 'google':
-        raise HTTPException(status_code=400, detail="Email already registered with Google sign-up.")
+    if existing_user and existing_user.sign_up_method == "google":
+        raise HTTPException(
+            status_code=400, detail="Email already registered with Google sign-up."
+        )
 
     # Create the Google user if it doesn't exist or is registered with a different method
     db_user = GoogleUser(
         user_id=user_id,
         email=user_email,
-        display_name='Google User',  # Default display name, can be changed later
-        sign_up_method='google',
-        verified=True  # Google users are considered verified
+        display_name="Google User",  # Default display name, can be changed later
+        sign_up_method="google",
+        verified=True,  # Google users are considered verified
     )
 
     try:
@@ -119,9 +126,12 @@ def create_user_google(db: Session, user_id: str, user_email: EmailStr) -> dict:
     except SQLAlchemyError as e:
         db.rollback()
         logger.error(f"Error creating Google user: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error creating Google user: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error creating Google user: {str(e)}"
+        )
 
     return {"message": "Google user created successfully"}
+
 
 ### Verify user email
 def verify_user_email(db: Session, email: EmailStr) -> EmailUser:
@@ -139,14 +149,14 @@ def verify_user_email(db: Session, email: EmailStr) -> EmailUser:
 
     if not user:
         raise HTTPException(status_code=404, detail="Email user not found.")
-    
+
     user.verified = True
     db.commit()
     return user
 
 
 ### Retrieve user by email
-def get_user_by_email(db: Session, email: EmailStr,sign_up_method:str) -> User:
+def get_user_by_email(db: Session, email: EmailStr, sign_up_method: str) -> User:
     """
     Get a user by their email.
     Args:
@@ -155,7 +165,11 @@ def get_user_by_email(db: Session, email: EmailStr,sign_up_method:str) -> User:
     Returns:
         User: The User object if found, else None.
     """
-    return db.query(User).filter(User.email == email, User.sign_up_method == sign_up_method).first()
+    return (
+        db.query(User)
+        .filter(User.email == email, User.sign_up_method == sign_up_method)
+        .first()
+    )
 
 
 ### Retrieve user by user ID
@@ -185,7 +199,7 @@ def delete_user(db: Session, email: str) -> None:
 
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     try:
         db.delete(db_user)
         db.commit()
@@ -206,6 +220,7 @@ def get_user_sessions(db: Session, user_id: str) -> List[UserSession]:
     """
     return db.query(UserSession).filter(UserSession.user_id == user_id).all()
 
+
 ### Delete user sessions by user ID and device identifier
 def delete_user_sessions(db: Session, user_id: str, device_identifier: str):
     """
@@ -218,13 +233,23 @@ def delete_user_sessions(db: Session, user_id: str, device_identifier: str):
         HTTPException: If an error occurs while deleting the sessions.
     """
     try:
-        sessions_to_delete = db.query(UserSession).filter_by(user_id=user_id, device_identifier=device_identifier).all()
+        sessions_to_delete = (
+            db.query(UserSession)
+            .filter_by(user_id=user_id, device_identifier=device_identifier)
+            .all()
+        )
         if not sessions_to_delete:
-            logger.warning(f"No sessions found for user_id={user_id} and device_identifier={device_identifier}")
+            logger.warning(
+                f"No sessions found for user_id={user_id} and device_identifier={device_identifier}"
+            )
         else:
-            db.query(UserSession).filter_by(user_id=user_id, device_identifier=device_identifier).delete()
+            db.query(UserSession).filter_by(
+                user_id=user_id, device_identifier=device_identifier
+            ).delete()
             db.commit()
     except SQLAlchemyError as e:
         db.rollback()
         logger.error(f"Error deleting user sessions: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error deleting user sessions: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error deleting user sessions: {str(e)}"
+        )

@@ -47,7 +47,6 @@ google-auth-httplib2==0.2.0
 python-dotenv-vault==0.6.4
 PyJWT==2.9.0
 pytz==2024.2
-itsdangerous==2.2.0
 fastapi-mail==1.4.1
 
  

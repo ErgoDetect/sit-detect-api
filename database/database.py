@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
 
 # Database URL: Ensure sensitive data is managed securely
-DATABASE_URL = 'postgresql://postgres:Admin1234@localhost/ergodb'
+DATABASE_URL = "postgresql://postgres:Admin1234@localhost/ergodb"
 
 # Create the SQLAlchemy engine
 engine = create_engine(
@@ -17,6 +17,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Base class for declarative models
 Base = declarative_base()
+
 
 def get_db():
     """

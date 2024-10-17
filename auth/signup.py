@@ -25,16 +25,14 @@ def authenticate_user(db: Session, email: str, password: str) -> User:
     if not user:
         # Raise a 404 HTTP exception if the email is not found
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Email does not exist."
+            status_code=status.HTTP_404_NOT_FOUND, detail="Email does not exist."
         )
 
     # Verify the password using the auth_utils function
     if not verify_password(password, user.password):
         # Raise a 401 HTTP exception if the password is incorrect
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect password."
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect password."
         )
 
     # Return the authenticated user object
