@@ -2,19 +2,13 @@ from datetime import datetime
 import json
 import logging
 import uuid
-from fastapi import (
-    APIRouter,
-    Depends,
-    HTTPException,
-    Request,
-    WebSocket,
-    WebSocketDisconnect,
-)
-from fastapi.websockets import WebSocketState
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from requests import Session
 from api.procressData import processData
 from auth.token import get_sub_from_token
 from api.detection import detection
+
+# from api.detection import Detection
 from database.database import get_db
 from database.model import SittingSession
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
@@ -23,17 +17,16 @@ logger = logging.getLogger(__name__)
 
 websocket_router = APIRouter()
 
-uuid_mudule = uuid
-
 
 @websocket_router.websocket("/results")
 async def landmark_results(websocket: WebSocket, db: Session = Depends(get_db)):
     await websocket.accept()
     acc_token = websocket.cookies.get("access_token")
-    # logger.info(f"WebSocket connection accepted for user: {get_sub_from_token(acc_token)}")
     logger.info("WebSocket connection accepted")
 
     response_counter = 0
+    detector = None
+    sitting_session = None
 
     try:
         while True:
@@ -42,45 +35,16 @@ async def landmark_results(websocket: WebSocket, db: Session = Depends(get_db)):
             object_data = json.loads(message)
             processed_data = processData(object_data["data"])
             response_counter += 1
-            # Extract current values
 
+            # On first message, initialize session and detector
             if response_counter == 1:
-                detector = detection()
-                sitting_session_id = uuid.uuid4()
-                user_id = get_sub_from_token(acc_token)
-                sitting_session = {}
-                date = datetime.now()
-
-                db_sitting_session = SittingSession(
-                    sitting_session_id=sitting_session_id,
-                    user_id=user_id,
-                    sitting_session=sitting_session,
-                    date=date,
-                )
                 try:
-                    db.add(db_sitting_session)
-                    db.commit()
-                    db.refresh(db_sitting_session)
-                except IntegrityError as e:
-                    db.rollback()
-                    logger.error(f"Integrity error: {e}")
-                    raise HTTPException(
-                        status_code=400, detail="Sitting session id already exists."
-                    )
-                except SQLAlchemyError as e:
-                    db.rollback()
-                    logger.error(f"SQLAlchemy error during user creation: {e}")
-                    raise HTTPException(
-                        status_code=500,
-                        detail="Error creating sitting session in database.",
-                    )
+                    detector, sitting_session = initialize_session(acc_token, db)
+                except HTTPException as e:
+                    await websocket.close()
+                    raise e
 
-                sit_session = (
-                    db.query(SittingSession)
-                    .filter(SittingSession.sitting_session_id == sitting_session_id)
-                    .first()
-                )
-
+            # Extract current values
             current_values = {
                 "shoulderPosition": processed_data.get_shoulder_position(),
                 "diameterRight": processed_data.get_diameter_right(),
@@ -94,16 +58,19 @@ async def landmark_results(websocket: WebSocket, db: Session = Depends(get_db)):
                 detector.set_correct_value(current_values)
             else:
                 detector.detect(current_values, object_data["data"]["faceDetect"])
+
             # Send the result back to the client
             await websocket.send_json(detector.get_alert())
 
-            sit_session.sitting_session = detector.get_timeline_result()
+            # Update session in database after processing
+            sitting_session.sitting_session = detector.get_timeline_result()
             db.commit()
-            # print(detector.get_timeline_result())
-            print("blink:", detector.blink_stack)
-            print("sitting:", detector.sitting_stack)
-            print("distance:", detector.distance_stack)
-            print("thoracic:", detector.thoracic_stack)
+
+            # Logging useful details
+            logger.info(f"Blink Stack: {detector.blink_stack}")
+            logger.info(f"Sitting Stack: {detector.sitting_stack}")
+            logger.info(f"Distance Stack: {detector.distance_stack}")
+            logger.info(f"Thoracic Stack: {detector.thoracic_stack}")
 
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected")
@@ -111,3 +78,39 @@ async def landmark_results(websocket: WebSocket, db: Session = Depends(get_db)):
         logger.error(f"Error in WebSocket connection: {e}")
         if websocket.client_state == WebSocketState.CONNECTED:
             await websocket.close()
+
+
+def initialize_session(acc_token, db):
+    """Initialize the detection object and create a new sitting session."""
+    #  detector = Detection()
+    detector = detection()
+    sitting_session_id = uuid.uuid4()
+    user_id = get_sub_from_token(acc_token)
+    date = datetime.now()
+
+    db_sitting_session = SittingSession(
+        sitting_session_id=sitting_session_id,
+        user_id=user_id,
+        sitting_session={},
+        date=date,
+    )
+
+    try:
+        # Add new sitting session to the database
+        db.add(db_sitting_session)
+        db.commit()
+        db.refresh(db_sitting_session)
+        return detector, db_sitting_session
+
+    except IntegrityError as e:
+        db.rollback()
+        logger.error(f"Integrity error: {e}")
+        raise HTTPException(
+            status_code=400, detail="Sitting session ID already exists."
+        )
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"SQLAlchemy error during session creation: {e}")
+        raise HTTPException(
+            status_code=500, detail="Error creating sitting session in database."
+        )

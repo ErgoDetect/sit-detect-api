@@ -9,7 +9,10 @@ from api.image_processing import download_file, receive_upload_images
 from api.procressData import processData
 from api.request_user import get_current_user
 from database.database import get_db
+
 from api.detection import detection
+
+# from api.detection import Detection
 from database.model import SittingSession
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 
@@ -28,11 +31,8 @@ async def video_process_result_upload(
     current_user: dict = Depends(get_current_user),
 ):
     # Access the file list
-    object_data = file.get(
-        "file"
-    )  # 'file' is a dict, so we access the list via file["file"]
+    object_data = file.get("file")
 
-    # Instantiate the detector and create other needed variables
     detector = detection()
     sitting_session_id = uuid.uuid4()
     user_id = current_user["user_id"]
