@@ -11,7 +11,7 @@ class processData:
         if (self.data['leftShoulder'] is not None and self.data['rightShoulder'] is not None):
             shoulder_left = self.data['leftShoulder']
             shoulder_right = self.data['rightShoulder']
-            return shoulder_left['y']+shoulder_right['y']
+            return (shoulder_left['y']+shoulder_right['y'])/2
         elif (self.data['leftShoulder'] is not None ):
             return self.data['leftShoulder']['y']
         elif (self.data['rightShoulder'] is not None ):
@@ -26,7 +26,7 @@ class processData:
             dis_p1p4 = math.sqrt(pow(self.data['rightEye']['33']['x']-self.data['rightEye']['133']['x'],2)+pow(self.data['rightEye']['33']['y']-self.data['rightEye']['133']['y'],2))
             dis_p2p6 = math.sqrt(pow(self.data['rightEye']['160']['x']-self.data['rightEye']['144']['x'],2)+pow(self.data['rightEye']['160']['y']-self.data['rightEye']['144']['y'],2))
             dis_p3p5 = math.sqrt(pow(self.data['rightEye']['158']['x']-self.data['rightEye']['153']['x'],2)+pow(self.data['rightEye']['158']['y']-self.data['rightEye']['153']['y'],2))
-            eAR = (dis_p2p6+dis_p3p5)/dis_p1p4
+            eAR = (dis_p2p6+dis_p3p5)/(dis_p1p4)
             return eAR
         return None
     
@@ -38,7 +38,7 @@ class processData:
             dis_p1p4 = math.sqrt(pow(self.data['leftEye']['362']['x']-self.data['leftEye']['263']['x'],2)+pow(self.data['leftEye']['362']['y']-self.data['leftEye']['263']['y'],2))
             dis_p2p6 = math.sqrt(pow(self.data['leftEye']['385']['x']-self.data['leftEye']['380']['x'],2)+pow(self.data['leftEye']['385']['y']-self.data['leftEye']['380']['y'],2))
             dis_p3p5 = math.sqrt(pow(self.data['leftEye']['387']['x']-self.data['leftEye']['373']['x'],2)+pow(self.data['leftEye']['387']['y']-self.data['leftEye']['373']['y'],2))
-            eAR = (dis_p2p6+dis_p3p5)/dis_p1p4
+            eAR = (dis_p2p6+dis_p3p5)/(dis_p1p4)
             return eAR
         return None
     

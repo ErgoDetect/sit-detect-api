@@ -1,7 +1,11 @@
-from sqlalchemy import Column, DateTime, String, ForeignKey, Boolean, UniqueConstraint
+import uuid
+from sqlalchemy import Column, DateTime, String, ForeignKey, Boolean, UniqueConstraint, JSON
 from sqlalchemy.orm import relationship
 from auth.token import get_current_time
 from database.database import Base
+from sqlalchemy.dialects.postgresql import UUID
+from datetime import datetime
+
 
 class User(Base):
     __tablename__ = 'users'
@@ -74,3 +78,12 @@ class UserSession(Base):
 
     # Define the back reference to the User
     user = relationship("User", back_populates="sessions")
+
+class SittingSession(Base):
+    __tablename__ = 'sitting_sessions'
+
+    sitting_session_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)  # UUID as the primary key
+    user_id = Column(String, ForeignKey('users.user_id'), nullable=False)
+    sitting_session = Column(JSON, nullable=False)  # Store sitting session as JSON
+    file_name = Column(String)
+    date = Column(DateTime, nullable=False, default=datetime.now)  # Default to current timestamp

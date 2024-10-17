@@ -19,6 +19,7 @@ from api.routes.auth_router import auth_router
 from api.routes.google_router import google_router
 from api.routes.user_router import user_router
 from api.routes.websocket_router import websocket_router
+from api.routes.file_router import file_router
 from auth.mail.mail_config import CONF
 from auth.token import check_token
 from database.database import engine, get_db
@@ -84,6 +85,7 @@ app.include_router(auth_router, prefix='/auth', tags=["Authentication"])
 app.include_router(user_router, prefix='/user', tags=["User"])
 app.include_router(google_router, prefix='/auth/google', tags=["Google OAuth"])
 app.include_router(websocket_router, prefix='/landmark', tags=["WebSocket"])
+app.include_router(file_router, prefix='/files', tags=["file_upload"])
 
 # Authentication router
 auth_status_router = APIRouter()
