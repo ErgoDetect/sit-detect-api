@@ -26,32 +26,9 @@ async def landmark_results(websocket: WebSocket, db: Session = Depends(get_db)):
     logger.info("WebSocket connection accepted")
 
     response_counter = 0
-    detector = detection()
-    sitting_session_id = uuid.uuid4()
-    user_id = get_sub_from_token(acc_token)
-    sitting_session = {}
-    date = datetime.now()
 
-    db_sitting_session = SittingSession(
-        sitting_session_id = sitting_session_id,
-        user_id = user_id,
-        sitting_session = sitting_session,
-        date = date
-    )
-    try:
-        db.add(db_sitting_session)
-        db.commit()
-        db.refresh(db_sitting_session)
-    except IntegrityError as e:
-        db.rollback()
-        logger.error(f"Integrity error: {e}")
-        raise HTTPException(status_code=400, detail="Sitting session id already exists.")
-    except SQLAlchemyError as e:
-        db.rollback()
-        logger.error(f"SQLAlchemy error during user creation: {e}")
-        raise HTTPException(status_code=500, detail="Error creating sitting session in database.")
     
-    sit_session = db.query(SittingSession).filter(SittingSession.sitting_session_id == sitting_session_id).first()
+    
     try:
         while True:
             # Receive and process data from the client
@@ -60,6 +37,35 @@ async def landmark_results(websocket: WebSocket, db: Session = Depends(get_db)):
             processed_data = processData(object_data['data'])
             response_counter += 1
             # Extract current values
+
+            if (response_counter == 1 ):
+                detector = detection()
+                sitting_session_id = uuid.uuid4()
+                user_id = get_sub_from_token(acc_token)
+                sitting_session = {}
+                date = datetime.now()
+
+                db_sitting_session = SittingSession(
+                    sitting_session_id = sitting_session_id,
+                    user_id = user_id,
+                    sitting_session = sitting_session,
+                    date = date
+                )
+                try:
+                    db.add(db_sitting_session)
+                    db.commit()
+                    db.refresh(db_sitting_session)
+                except IntegrityError as e:
+                    db.rollback()
+                    logger.error(f"Integrity error: {e}")
+                    raise HTTPException(status_code=400, detail="Sitting session id already exists.")
+                except SQLAlchemyError as e:
+                    db.rollback()
+                    logger.error(f"SQLAlchemy error during user creation: {e}")
+                    raise HTTPException(status_code=500, detail="Error creating sitting session in database.")
+                
+                sit_session = db.query(SittingSession).filter(SittingSession.sitting_session_id == sitting_session_id).first()
+
             current_values = {
                 "shoulderPosition": processed_data.get_shoulder_position(),
                 "diameterRight": processed_data.get_diameter_right(),
