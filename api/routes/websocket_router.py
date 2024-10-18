@@ -3,6 +3,7 @@ import json
 import logging
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.websockets import WebSocketState
 from requests import Session
 from api.procressData import processData
 from auth.token import get_sub_from_token
@@ -25,7 +26,7 @@ async def landmark_results(websocket: WebSocket, db: Session = Depends(get_db)):
     logger.info("WebSocket connection accepted")
 
     response_counter = 0
-    detector = None
+    detector = detection(frame_per_second=15)
     sitting_session = None
 
     try:
@@ -39,7 +40,7 @@ async def landmark_results(websocket: WebSocket, db: Session = Depends(get_db)):
             # On first message, initialize session and detector
             if response_counter == 1:
                 try:
-                    detector, sitting_session = initialize_session(acc_token, db)
+                    sitting_session = initialize_session(acc_token, db)
                 except HTTPException as e:
                     await websocket.close()
                     raise e
@@ -59,9 +60,20 @@ async def landmark_results(websocket: WebSocket, db: Session = Depends(get_db)):
             else:
                 detector.detect(current_values, object_data["data"]["faceDetect"])
 
-            # Send the result back to the client
-            await websocket.send_json(detector.get_alert())
-
+            # Send the result back to the client   
+            alert = detector.get_alert()
+            send_alert = {}
+            if(alert["blink_alert"] == True):
+                send_alert.update({'blink_alert':True})
+            if(alert["sitting_alert"] == True):
+                send_alert.update({'sitting_alert':True})
+            if(alert["distance_alert"] == True):
+                send_alert.update({'distance_alert':True})
+            if(alert["thoracic_alert"] == True):
+                send_alert.update({'thoracic_alert':True})
+            if(alert["time_limit_exceed"] == True):
+                send_alert.update({'time_limit_exceed':True})
+            await websocket.send_json(send_alert)
             # Update session in database after processing
             sitting_session.sitting_session = detector.get_timeline_result()
             db.commit()
@@ -83,7 +95,6 @@ async def landmark_results(websocket: WebSocket, db: Session = Depends(get_db)):
 def initialize_session(acc_token, db):
     """Initialize the detection object and create a new sitting session."""
     #  detector = Detection()
-    detector = detection()
     sitting_session_id = uuid.uuid4()
     user_id = get_sub_from_token(acc_token)
     date = datetime.now()
@@ -100,7 +111,7 @@ def initialize_session(acc_token, db):
         db.add(db_sitting_session)
         db.commit()
         db.refresh(db_sitting_session)
-        return detector, db_sitting_session
+        return db_sitting_session
 
     except IntegrityError as e:
         db.rollback()

@@ -23,12 +23,13 @@ class detection:
         self.sitting_stack_threshold = 2700
         self.distance_stack_threshold = 30
         self.thoracic_stack_threshold = 2
-        self.result = [
-            False,
-            False,
-            False,
-            False,
-        ]  # [blink_alert, sitting_alert, distance_alert, thoracic_alert]
+        self.result = {
+            "blink_alert":False,
+            "sitting_alert":False,
+            "distance_alert":False,
+            "thoracic_alert":False,
+            "time_limit_exceed":False
+        }  # [blink_alert, sitting_alert, distance_alert, thoracic_alert]
 
         self.timeline_result = {
             "blink": [],
@@ -119,69 +120,72 @@ class detection:
                     self.blink_stack += 1
 
             if self.blink_stack >= self.blink_stack_threshold * self.frame_per_second:
-                if self.result[0] == False:
+                if self.result["blink_alert"] == False:
                     self.timeline_result["blink"].append([])
                     self.timeline_result["blink"][
                         len(self.timeline_result["blink"]) - 1
                     ].append(self.response_counter - self.blink_stack_threshold)
-                self.result[0] = True
+                self.result["blink_alert"] = True
             else:
-                if self.result[0] == True:
+                if self.result["blink_alert"] == True:
                     self.timeline_result["blink"][
                         len(self.timeline_result["blink"]) - 1
                     ].append(self.response_counter)
-                self.result[0] = False
+                self.result["blink_alert"] = False
 
             if (
                 self.sitting_stack
                 >= self.sitting_stack_threshold * self.frame_per_second
             ):
-                if self.result[1] == False:
+                if self.result["sitting_alert"] == False:
                     self.timeline_result["sitting"].append([])
                     self.timeline_result["sitting"][
                         len(self.timeline_result["sitting"]) - 1
                     ].append(self.response_counter - self.sitting_stack_threshold)
-                self.result[1] = True
+                self.result["sitting_alert"] = True
             else:
-                if self.result[1] == True:
+                if self.result["sitting_alert"] == True:
                     self.timeline_result["sitting"][
                         len(self.timeline_result["sitting"]) - 1
                     ].append(self.response_counter)
-                self.result[1] = False
+                self.result["sitting_alert"] = False
 
             if (
                 self.distance_stack
                 >= self.distance_stack_threshold * self.frame_per_second
             ):
-                if self.result[2] == False:
+                if self.result["distance_alert"] == False:
                     self.timeline_result["distance"].append([])
                     self.timeline_result["distance"][
                         len(self.timeline_result["distance"]) - 1
                     ].append(self.response_counter - self.distance_stack_threshold)
-                self.result[2] = True
+                self.result["distance_alert"] = True
             else:
-                if self.result[2] == True:
+                if self.result["distance_alert"] == True:
                     self.timeline_result["distance"][
                         len(self.timeline_result["distance"]) - 1
                     ].append(self.response_counter)
-                self.result[2] = False
+                self.result["distance_alert"] = False
 
             if (
                 self.thoracic_stack
                 >= self.thoracic_stack_threshold * self.frame_per_second
             ):
-                if self.result[3] == False:
+                if self.result["thoracic_alert"] == False:
                     self.timeline_result["thoracic"].append([])
                     self.timeline_result["thoracic"][
                         len(self.timeline_result["thoracic"]) - 1
                     ].append(self.response_counter - self.thoracic_stack_threshold)
-                self.result[3] = True
+                self.result["thoracic_alert"] = True
             else:
-                if self.result[3] == True:
+                if self.result["thoracic_alert"] == True:
                     self.timeline_result["thoracic"][
                         len(self.timeline_result["thoracic"]) - 1
                     ].append(self.response_counter)
-                self.result[3] = False
+                self.result["thoracic_alert"] = False
+
+            if(self.response_counter >= 7200*self.frame_per_second):
+                self.result["time_limit_exceed"] = True
 
     def get_timeline_result(self):
         return self.timeline_result
