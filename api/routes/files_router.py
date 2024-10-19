@@ -33,7 +33,7 @@ async def video_process_result_upload(
     # Access the file list
     object_data = file.get("file")
 
-    detector = detection()
+    detector = detection(frame_per_second=15)
     sitting_session_id = uuid.uuid4()
     user_id = current_user["user_id"]
     date = datetime.now()
