@@ -33,7 +33,7 @@ async def video_process_result_upload(
     # Access the file list
     object_data = file.get("file")
 
-    detector = detection()
+    detector = detection(frame_per_second=15)
     sitting_session_id = uuid.uuid4()
     user_id = current_user["user_id"]
     date = datetime.now()
@@ -54,12 +54,16 @@ async def video_process_result_upload(
             detector.set_correct_value(current_values)
         else:
             detector.detect(current_values, object_data[i]["faceDetect"])
-
+    timeline_result = detector.get_timeline_result()
     # Create and commit a new SittingSession
     db_sitting_session = SittingSession(
         sitting_session_id=sitting_session_id,
         user_id=user_id,
-        sitting_session=detector.get_timeline_result(),
+        # sitting_session=detector.get_timeline_result(),
+        blink=timeline_result["blink"],
+        sitting=timeline_result["sitting"],
+        distance=timeline_result["distance"],
+        thoracic=timeline_result["thoracic"],
         date=date,
     )
 
@@ -71,12 +75,12 @@ async def video_process_result_upload(
     except IntegrityError as e:
         db.rollback()
         raise HTTPException(
-            status_code=400, detail="Sitting session id already exists."
+            status_code=400, detail=f"Sitting session id already exists : {e}"
         )
     except SQLAlchemyError as e:
         db.rollback()
         raise HTTPException(
-            status_code=500, detail="Error creating sitting session in database."
+            status_code=500, detail=f"Error creating sitting session in database : {e}"
         )
 
 
