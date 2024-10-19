@@ -94,7 +94,10 @@ class SittingSession(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )  # UUID as the primary key
     user_id = Column(String, ForeignKey("users.user_id"), nullable=False)
-    sitting_session = Column(JSON, nullable=False)  # Store sitting session as JSON
+    blink = Column(JSON)
+    sitting = Column(JSON)
+    distance = Column(JSON)
+    thoracic = Column(JSON)
     file_name = Column(String)
     date = Column(
         DateTime, nullable=False, default=datetime.now
