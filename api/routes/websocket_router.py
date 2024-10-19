@@ -60,22 +60,27 @@ async def landmark_results(websocket: WebSocket, db: Session = Depends(get_db)):
             else:
                 detector.detect(current_values, object_data["data"]["faceDetect"])
 
-            # Send the result back to the client   
+            # Send the result back to the client
             alert = detector.get_alert()
             send_alert = {}
-            if(alert["blink_alert"] == True):
-                send_alert.update({'blink_alert':True})
-            if(alert["sitting_alert"] == True):
-                send_alert.update({'sitting_alert':True})
-            if(alert["distance_alert"] == True):
-                send_alert.update({'distance_alert':True})
-            if(alert["thoracic_alert"] == True):
-                send_alert.update({'thoracic_alert':True})
-            if(alert["time_limit_exceed"] == True):
-                send_alert.update({'time_limit_exceed':True})
+            if alert["blink_alert"]:
+                send_alert.update({"blink_alert": True})
+            if alert["sitting_alert"]:
+                send_alert.update({"sitting_alert": True})
+            if alert["distance_alert"]:
+                send_alert.update({"distance_alert": True})
+            if alert["thoracic_alert"]:
+                send_alert.update({"thoracic_alert": True})
+            if alert["time_limit_exceed"]:
+                send_alert.update({"time_limit_exceed": True})
             await websocket.send_json(send_alert)
+
+            timeline_result = detector.get_timeline_result()
             # Update session in database after processing
-            sitting_session.sitting_session = detector.get_timeline_result()
+            sitting_session.blink = timeline_result["blink"]
+            sitting_session.sitting = timeline_result["sitting"]
+            sitting_session.distance = timeline_result["distance"]
+            sitting_session.thoracic = timeline_result["thoracic"]
             db.commit()
 
             # Logging useful details
@@ -102,7 +107,11 @@ def initialize_session(acc_token, db):
     db_sitting_session = SittingSession(
         sitting_session_id=sitting_session_id,
         user_id=user_id,
-        sitting_session={},
+        # sitting_session={},
+        blink=[],
+        sitting=[],
+        distance=[],
+        thoracic=[],
         date=date,
     )
 
