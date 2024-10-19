@@ -74,7 +74,7 @@ def verify_user_mail(token: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Unexpected internal error")
 
 
-@user_router.delete("/delete", status_code=status.HTTP_204_NO_CONTENT)
+@user_router.delete("/delete", status_code=status.HTTP_200_OK)
 def delete_user_db(
     db: Session = Depends(get_db), current_user=Depends(get_current_user)
 ):
