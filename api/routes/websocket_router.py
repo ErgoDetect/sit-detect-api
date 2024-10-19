@@ -26,7 +26,7 @@ async def landmark_results(websocket: WebSocket, db: Session = Depends(get_db)):
     logger.info("WebSocket connection accepted")
 
     response_counter = 0
-    detector = detection(frame_per_second=15)
+    detector = detection(frame_per_second=5)
     sitting_session = None
 
     try:
@@ -84,10 +84,11 @@ async def landmark_results(websocket: WebSocket, db: Session = Depends(get_db)):
             db.commit()
 
             # Logging useful details
-            logger.info(f"Blink Stack: {detector.blink_stack}")
-            logger.info(f"Sitting Stack: {detector.sitting_stack}")
-            logger.info(f"Distance Stack: {detector.distance_stack}")
-            logger.info(f"Thoracic Stack: {detector.thoracic_stack}")
+            # logger.info(f"Blink Stack: {detector.blink_stack}")
+            # logger.info(f"Sitting Stack: {detector.sitting_stack}")
+            # logger.info(f"Distance Stack: {detector.distance_stack}")
+            # logger.info(f"Thoracic Stack: {detector.thoracic_stack}")
+            logger.info(f"Response: {response_counter}")
 
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected")
