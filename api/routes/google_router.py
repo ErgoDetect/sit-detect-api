@@ -184,7 +184,7 @@ async def callback_from_google(
 
 
 # Set cookies after Google authentication
-@google_router.get("/set-cookies")
+@google_router.post("/set-cookies")
 async def set_cookies(
     request: Request, response: Response, db: Session = Depends(get_db)
 ):
