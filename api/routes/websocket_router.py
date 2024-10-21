@@ -8,8 +8,6 @@ from requests import Session
 from api.procressData import processData
 from auth.token import get_sub_from_token
 from api.detection import detection
-
-# from api.detection import Detection
 from database.database import get_db
 from database.model import SittingSession
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
@@ -20,74 +18,47 @@ websocket_router = APIRouter()
 
 
 @websocket_router.websocket("/results")
-async def landmark_results(websocket: WebSocket, db: Session = Depends(get_db)):
+async def landmark_results(
+    websocket: WebSocket, db: Session = Depends(get_db), stream: bool = False
+):
     await websocket.accept()
     acc_token = websocket.cookies.get("access_token")
     logger.info("WebSocket connection accepted")
 
+    # Initialize variables outside the loop
+    detector, sitting_session = None, None
     response_counter = 0
-    detector = detection(frame_per_second=15)
-    sitting_session = None
+
+    if stream:
+        detector = detection(frame_per_second=15)
 
     try:
         while True:
-            # Receive and process data from the client
             message = await websocket.receive_text()
             object_data = json.loads(message)
             processed_data = processData(object_data["data"])
+            current_values = extract_current_values(processed_data)
             response_counter += 1
 
-            # On first message, initialize session and detector
-            if response_counter == 1:
-                try:
-                    sitting_session = initialize_session(acc_token, db)
-                except HTTPException as e:
-                    await websocket.close()
-                    raise e
+            # Initialize session and detector if not already done
+            if response_counter == 1 and not sitting_session:
+                sitting_session = initialize_session(acc_token, db)
 
-            # Extract current values
-            current_values = {
-                "shoulderPosition": processed_data.get_shoulder_position(),
-                "diameterRight": processed_data.get_diameter_right(),
-                "diameterLeft": processed_data.get_diameter_left(),
-                "eyeAspectRatioRight": processed_data.get_blink_right(),
-                "eyeAspectRatioLeft": processed_data.get_blink_left(),
-            }
-
-            # Process the first 5 messages to establish baseline values
-            if response_counter <= 5:
+            # Set baseline values for the first 5 frames
+            (
                 detector.set_correct_value(current_values)
-            else:
-                detector.detect(current_values, object_data["data"]["faceDetect"])
+                if response_counter <= 5
+                else detector.detect(current_values, object_data["data"]["faceDetect"])
+            )
 
-            # Send the result back to the client
-            alert = detector.get_alert()
-            send_alert = {}
-            if alert["blink_alert"]:
-                send_alert.update({"blink_alert": True})
-            if alert["sitting_alert"]:
-                send_alert.update({"sitting_alert": True})
-            if alert["distance_alert"]:
-                send_alert.update({"distance_alert": True})
-            if alert["thoracic_alert"]:
-                send_alert.update({"thoracic_alert": True})
-            if alert["time_limit_exceed"]:
-                send_alert.update({"time_limit_exceed": True})
-            await websocket.send_json(send_alert)
+            # Prepare and send alert only if necessary
+            if send_alert := prepare_alert(detector):
+                await websocket.send_json(send_alert)
 
-            timeline_result = detector.get_timeline_result()
-            # Update session in database after processing
-            sitting_session.blink = timeline_result["blink"]
-            sitting_session.sitting = timeline_result["sitting"]
-            sitting_session.distance = timeline_result["distance"]
-            sitting_session.thoracic = timeline_result["thoracic"]
-            db.commit()
-
-            # Logging useful details
-            logger.info(f"Blink Stack: {detector.blink_stack}")
-            logger.info(f"Sitting Stack: {detector.sitting_stack}")
-            logger.info(f"Distance Stack: {detector.distance_stack}")
-            logger.info(f"Thoracic Stack: {detector.thoracic_stack}")
+            # Periodically update session data in the database (e.g., every 5 messages)
+            if response_counter % 5 == 0:
+                update_sitting_session(detector, sitting_session, db)
+                logger.info(f"Session updated at message {response_counter}")
 
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected")
@@ -99,38 +70,65 @@ async def landmark_results(websocket: WebSocket, db: Session = Depends(get_db)):
 
 def initialize_session(acc_token, db):
     """Initialize the detection object and create a new sitting session."""
-    #  detector = Detection()
-    sitting_session_id = uuid.uuid4()
-    user_id = get_sub_from_token(acc_token)
-    date = datetime.now()
-
-    db_sitting_session = SittingSession(
-        sitting_session_id=sitting_session_id,
-        user_id=user_id,
-        # sitting_session={},
-        blink=[],
-        sitting=[],
-        distance=[],
-        thoracic=[],
-        date=date,
-    )
-
     try:
-        # Add new sitting session to the database
+        sitting_session_id = uuid.uuid4()
+        user_id = get_sub_from_token(acc_token)
+        date = datetime.now()
+
+        db_sitting_session = SittingSession(
+            sitting_session_id=sitting_session_id,
+            user_id=user_id,
+            blink=[],
+            sitting=[],
+            distance=[],
+            thoracic=[],
+            date=date,
+        )
+
         db.add(db_sitting_session)
         db.commit()
         db.refresh(db_sitting_session)
         return db_sitting_session
 
-    except IntegrityError as e:
+    except (IntegrityError, SQLAlchemyError) as e:
         db.rollback()
-        logger.error(f"Integrity error: {e}")
-        raise HTTPException(
-            status_code=400, detail="Sitting session ID already exists."
+        error_type = (
+            "Integrity error" if isinstance(e, IntegrityError) else "SQLAlchemy error"
         )
+        logger.error(f"{error_type}: {e}")
+        raise HTTPException(
+            status_code=400 if isinstance(e, IntegrityError) else 500,
+            detail=f"Error creating session: {e}",
+        )
+
+
+def extract_current_values(processed_data):
+    """Extract the necessary current values from processed data."""
+    return {
+        "shoulderPosition": processed_data.get_shoulder_position(),
+        "diameterRight": processed_data.get_diameter_right(),
+        "diameterLeft": processed_data.get_diameter_left(),
+        "eyeAspectRatioRight": processed_data.get_blink_right(),
+        "eyeAspectRatioLeft": processed_data.get_blink_left(),
+    }
+
+
+def prepare_alert(detector):
+    """Prepare the alert dictionary based on the detector's results."""
+    alert = detector.get_alert()
+    return {key: True for key in alert if alert[key]}
+
+
+def update_sitting_session(detector, sitting_session, db):
+    """Update the sitting session in the database with detector timeline results."""
+    try:
+        timeline_result = detector.get_timeline_result()
+        sitting_session.blink = timeline_result["blink"]
+        sitting_session.sitting = timeline_result["sitting"]
+        sitting_session.distance = timeline_result["distance"]
+        sitting_session.thoracic = timeline_result["thoracic"]
+        db.commit()
+
     except SQLAlchemyError as e:
         db.rollback()
-        logger.error(f"SQLAlchemy error during session creation: {e}")
-        raise HTTPException(
-            status_code=500, detail="Error creating sitting session in database."
-        )
+        logger.error(f"Error updating sitting session: {e}")
