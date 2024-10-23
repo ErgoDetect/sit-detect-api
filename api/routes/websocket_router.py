@@ -65,8 +65,12 @@ async def landmark_results(
                 sitting_session = initialize_session(acc_token, db)
 
             # Set baseline values for the first 5 frames
-            if response_counter <= 5:
+            if response_counter <= 15:
                 detector.set_correct_value(current_values)
+                if response_counter == 15:
+                    # Send success message after the baseline is set
+                    await websocket.send_json({"type": "initialization_success"})
+                    logger.info("Initialization success message sent")
             else:
                 detector.detect(current_values, object_data["data"]["faceDetect"])
 
@@ -79,7 +83,6 @@ async def landmark_results(
             await websocket.send_json(
                 {"type": "all_topic_alerts", "data": all_topic_alert_data}
             )
-            logger.info(f"Sent all topic alert data: {all_topic_alert_data}")
 
             # Prepare triggered alert data (alerts that meet cooldown and threshold)
             triggered_alerts = {}
@@ -102,7 +105,6 @@ async def landmark_results(
                 await websocket.send_json(
                     {"type": "triggered_alerts", "data": triggered_alerts}
                 )
-                logger.info(f"Sent triggered alerts: {triggered_alerts}")
 
             # Periodically update session data in the database (e.g., every 5 messages)
             if response_counter % 5 == 0:
