@@ -46,6 +46,7 @@ async def landmark_results(
     detector, sitting_session = None, None
     response_counter = 0
 
+
     # Track last alert times for cooldowns
     last_alert_time = {alert_type: None for alert_type in ALERT_TYPES}
 
@@ -73,6 +74,7 @@ async def landmark_results(
                     logger.info("Initialization success message sent")
             else:
                 detector.detect(current_values, object_data["data"]["faceDetect"])
+
 
             current_time = get_current_time()
 
@@ -109,7 +111,6 @@ async def landmark_results(
             # Periodically update session data in the database (e.g., every 5 messages)
             if response_counter % 5 == 0:
                 update_sitting_session(detector, sitting_session, db)
-                logger.info(f"Session updated at message {response_counter}")
 
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected")

@@ -124,7 +124,10 @@ class detection:
                     self.timeline_result["blink"].append([])
                     self.timeline_result["blink"][
                         len(self.timeline_result["blink"]) - 1
-                    ].append(self.response_counter - self.blink_stack_threshold)
+                    ].append(
+                        self.response_counter
+                        - (self.blink_stack_threshold * self.frame_per_second)
+                    )
                 self.result["blink_alert"] = True
             else:
                 if self.result["blink_alert"] is True:
@@ -141,7 +144,10 @@ class detection:
                     self.timeline_result["sitting"].append([])
                     self.timeline_result["sitting"][
                         len(self.timeline_result["sitting"]) - 1
-                    ].append(self.response_counter - self.sitting_stack_threshold)
+                    ].append(
+                        self.response_counter
+                        - (self.sitting_stack_threshold * self.frame_per_second)
+                    )
                 self.result["sitting_alert"] = True
             else:
                 if self.result["sitting_alert"] is True:
@@ -158,7 +164,10 @@ class detection:
                     self.timeline_result["distance"].append([])
                     self.timeline_result["distance"][
                         len(self.timeline_result["distance"]) - 1
-                    ].append(self.response_counter - self.distance_stack_threshold)
+                    ].append(
+                        self.response_counter
+                        - (self.distance_stack_threshold * self.frame_per_second)
+                    )
                 self.result["distance_alert"] = True
             else:
                 if self.result["distance_alert"] is True:
@@ -175,7 +184,10 @@ class detection:
                     self.timeline_result["thoracic"].append([])
                     self.timeline_result["thoracic"][
                         len(self.timeline_result["thoracic"]) - 1
-                    ].append(self.response_counter - self.thoracic_stack_threshold)
+                    ].append(
+                        self.response_counter
+                        - (self.thoracic_stack_threshold * self.frame_per_second)
+                    )
                 self.result["thoracic_alert"] = True
             else:
                 if self.result["thoracic_alert"] is True:
