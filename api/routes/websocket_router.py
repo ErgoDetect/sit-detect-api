@@ -2,15 +2,24 @@ from datetime import datetime, timedelta
 import json
 import logging
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.websockets import WebSocketState
 from requests import Session
 from api.procressData import processData
+from api.request_user import get_current_user
 from auth.token import LOCAL_TZ, get_current_time, get_sub_from_token
 from api.detection import detection
 from database.database import get_db
 from database.model import SittingSession
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
+
+from database.schemas.User import VideoNameRequest
 
 logger = logging.getLogger(__name__)
 
@@ -20,18 +29,53 @@ websocket_router = APIRouter()
 ALERT_TYPES = ["blink", "sitting", "distance", "thoracic"]
 
 cooldown_periods = {
-    "blink": timedelta(minutes=2),  # Blink cooldown
-    "sitting": timedelta(minutes=30),  # Sitting posture cooldown
-    "distance": timedelta(minutes=10),  # Screen distance cooldown
-    "thoracic": timedelta(minutes=10),  # Thoracic posture cooldown
+    "blink": timedelta(minutes=2),
+    "sitting": timedelta(minutes=30),
+    "distance": timedelta(minutes=10),
+    "thoracic": timedelta(minutes=10),
 }
 
 alert_thresholds = {
-    "blink": timedelta(seconds=10),  # Blink threshold
-    "sitting": timedelta(minutes=2),  # Sitting posture threshold
-    "distance": timedelta(minutes=1),  # Screen distance threshold
-    "thoracic": timedelta(minutes=1),  # Thoracic posture threshold
+    "blink": timedelta(seconds=10),
+    "sitting": timedelta(minutes=2),
+    "distance": timedelta(minutes=1),
+    "thoracic": timedelta(minutes=1),
 }
+
+
+# Define a Pydantic model for input validation
+
+
+@websocket_router.post("/video_name")
+async def receive_video_name(
+    request: VideoNameRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    try:
+        # Get the video name from the request body
+        video_name = request.video_name
+
+        # Get the user ID from the current user information
+        user_id = current_user["user_id"]
+
+        # Find the most recent sitting session for the user
+        sitting_session = (
+            db.query(SittingSession)
+            .filter(SittingSession.user_id == user_id)
+            .order_by(SittingSession.date.desc())
+            .first()
+        )
+        if not sitting_session:
+            raise HTTPException(status_code=404, detail="Sitting session not found")
+
+        # Update video session in the database
+        update_video_session(video_name, sitting_session, db)
+        return {"message": "Video session updated successfully"}
+
+    except Exception as e:
+        logger.error(f"Error updating video session: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @websocket_router.websocket("/results")
@@ -43,72 +87,50 @@ async def landmark_results(
     logger.info("WebSocket connection accepted")
 
     # Initialize variables outside the loop
-    detector, sitting_session = None, None
+    detector = detection(frame_per_second=15) if stream else None
+    sitting_session = None
     response_counter = 0
-
-
-    # Track last alert times for cooldowns
     last_alert_time = {alert_type: None for alert_type in ALERT_TYPES}
-
-    if stream:
-        detector = detection(frame_per_second=15)
+    object_data = None  # Placeholder for later use
 
     try:
-        while True:
+        while stream:
+            # Receive the message and process data if streaming
             message = await websocket.receive_text()
             object_data = json.loads(message)
             processed_data = processData(object_data["data"])
             current_values = extract_current_values(processed_data)
+
             response_counter += 1
 
             # Initialize session and detector if not already done
             if response_counter == 1 and not sitting_session:
                 sitting_session = initialize_session(acc_token, db)
 
-            # Set baseline values for the first 5 frames
+            # Set baseline values for the first 15 frames
             if response_counter <= 15:
                 detector.set_correct_value(current_values)
                 if response_counter == 15:
-                    # Send success message after the baseline is set
                     await websocket.send_json({"type": "initialization_success"})
                     logger.info("Initialization success message sent")
             else:
-                detector.detect(current_values, object_data["data"]["faceDetect"])
+                detector.detect(current_values, object_data["data"].get("faceDetect"))
 
-
-            current_time = get_current_time()
-
-            # Prepare all topic alert data (status of all topics)
-            all_topic_alert_data = prepare_alert(detector)
-
-            # Send the status of all topics in every loop iteration
+            # Always send the status of all topics in every loop iteration
             await websocket.send_json(
-                {"type": "all_topic_alerts", "data": all_topic_alert_data}
+                {"type": "all_topic_alerts", "data": prepare_alert(detector)}
             )
 
-            # Prepare triggered alert data (alerts that meet cooldown and threshold)
-            triggered_alerts = {}
-
-            # Iterate over each alert type and check if it should be triggered
-            for alert_type in ALERT_TYPES:
-                if should_send_alert(
-                    detector=detector,
-                    alert_type=alert_type,
-                    last_alert_time=last_alert_time[alert_type],
-                    cooldown_period=cooldown_periods[alert_type],
-                    alert_duration_threshold=alert_thresholds[alert_type],
-                ):
-                    triggered_alerts[alert_type] = True  # Only send this alert type
-                    last_alert_time[alert_type] = current_time  # Update last alert time
-                    logger.info(f"Prepared {alert_type} alert at {current_time}")
-
-            # If there are any triggered alerts, send them separately
+            # Handle and send alerts based on thresholds and cooldowns
+            triggered_alerts = handle_alerts(
+                detector, last_alert_time, cooldown_periods, alert_thresholds
+            )
             if triggered_alerts:
                 await websocket.send_json(
                     {"type": "triggered_alerts", "data": triggered_alerts}
                 )
 
-            # Periodically update session data in the database (e.g., every 5 messages)
+            # Periodically update the database session
             if response_counter % 5 == 0:
                 update_sitting_session(detector, sitting_session, db)
 
@@ -139,7 +161,6 @@ def initialize_session(acc_token, db):
 
         db.add(db_sitting_session)
         db.commit()
-        db.refresh(db_sitting_session)
         return db_sitting_session
 
     except (IntegrityError, SQLAlchemyError) as e:
@@ -156,29 +177,48 @@ def initialize_session(acc_token, db):
 
 def extract_current_values(processed_data):
     """Extract the necessary current values from processed data."""
-    return {
-        "shoulderPosition": processed_data.get_shoulder_position(),
-        "diameterRight": processed_data.get_diameter_right(),
-        "diameterLeft": processed_data.get_diameter_left(),
-        "eyeAspectRatioRight": processed_data.get_blink_right(),
-        "eyeAspectRatioLeft": processed_data.get_blink_left(),
-    }
+    try:
+        return {
+            "shoulderPosition": processed_data.get_shoulder_position(),
+            "diameterRight": processed_data.get_diameter_right(),
+            "diameterLeft": processed_data.get_diameter_left(),
+            "eyeAspectRatioRight": processed_data.get_blink_right(),
+            "eyeAspectRatioLeft": processed_data.get_blink_left(),
+        }
+    except KeyError as e:
+        logger.error(f"Error extracting current values: missing key {e}")
+        return None
 
 
 def prepare_alert(detector):
-    """
-    Prepare a combined alert dictionary based on the detector's results.
-    This will return alerts for all detection types (blink, sitting, distance, thoracic).
-    """
+    """Prepare a combined alert dictionary based on the detector's results."""
     alert = detector.get_alert()
-
-    # Return the status of all alert types, not just triggered ones
     return {
-        "blink": alert["blink_alert"],
-        "sitting": alert["sitting_alert"],
-        "distance": alert["distance_alert"],
-        "thoracic": alert["thoracic_alert"],
+        "blink": alert.get("blink_alert"),
+        "sitting": alert.get("sitting_alert"),
+        "distance": alert.get("distance_alert"),
+        "thoracic": alert.get("thoracic_alert"),
     }
+
+
+def handle_alerts(detector, last_alert_time, cooldown_periods, alert_thresholds):
+    """Handle alerts and check if they meet thresholds and cooldowns."""
+    triggered_alerts = {}
+    current_time = get_current_time()
+
+    for alert_type in ALERT_TYPES:
+        if should_send_alert(
+            detector=detector,
+            alert_type=alert_type,
+            last_alert_time=last_alert_time[alert_type],
+            cooldown_period=cooldown_periods[alert_type],
+            alert_duration_threshold=alert_thresholds[alert_type],
+        ):
+            triggered_alerts[alert_type] = True
+            last_alert_time[alert_type] = current_time
+            logger.info(f"Prepared {alert_type} alert at {current_time}")
+
+    return triggered_alerts
 
 
 def update_sitting_session(detector, sitting_session, db):
@@ -190,40 +230,37 @@ def update_sitting_session(detector, sitting_session, db):
         sitting_session.distance = timeline_result["distance"]
         sitting_session.thoracic = timeline_result["thoracic"]
         db.commit()
-
     except SQLAlchemyError as e:
         db.rollback()
         logger.error(f"Error updating sitting session: {e}")
 
 
+def update_video_session(video_name, sitting_session, db):
+    """Update the sitting session in the database with video file name."""
+    try:
+        sitting_session.file_name = video_name
+        db.commit()
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"Error updating video session: {e}")
+
+
 def should_send_alert(
     detector, alert_type, last_alert_time, cooldown_period, alert_duration_threshold
 ):
-    """
-    Determines whether to send an alert based on the posture detection results.
-
-    Args:
-    - detector: An instance of the detection class.
-    - alert_type: The type of alert (blink, sitting, distance, thoracic).
-    - last_alert_time: The last time an alert was sent for this type.
-    - cooldown_period: A timedelta object representing the cooldown period between alerts.
-    - alert_duration_threshold: A timedelta object representing the minimum time a posture issue should persist before triggering an alert.
-
-    Returns:
-    - Boolean indicating whether an alert should be sent.
-    """
+    """Determines whether to send an alert based on the posture detection results."""
     current_time = get_current_time()
 
-    # Cooldown check: Don't send another alert if within the cooldown period
+    # Cooldown check
     if last_alert_time and current_time - last_alert_time < cooldown_period:
         return False
 
-    # Check if the specific alert has persisted long enough based on timeline results
-    if detector.result[f"{alert_type}_alert"]:
-        last_issue_time = datetime.fromtimestamp(
-            detector.timeline_result[alert_type][-1][0]
-        ).replace(tzinfo=LOCAL_TZ)
-        if current_time - last_issue_time > alert_duration_threshold:
-            return True
+    # Check if the specific alert has persisted long enough
+    alert_timeline = detector.timeline_result.get(alert_type, [])
+    if detector.result.get(f"{alert_type}_alert") and alert_timeline:
+        last_issue_time = datetime.fromtimestamp(alert_timeline[-1][0]).replace(
+            tzinfo=LOCAL_TZ
+        )
+        return current_time - last_issue_time > alert_duration_threshold
 
     return False
