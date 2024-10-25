@@ -101,3 +101,16 @@ def delete_user_db(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error",
         )
+
+
+@user_router.get("/history")
+def get_user_history(current_user=Depends(get_current_user)):
+    return {
+        "session_title": [
+            "Posture Detect 21 October 2567",
+            "Posture Detect 22 October 2567",
+            "Posture Detect 23 October 2567",
+            "Posture Detect 24 October 2567",
+        ],
+        "duration": ["20 minute", "20 minute", "30 minute", "45 minute"],
+    }
