@@ -50,7 +50,7 @@ async def video_process_result_upload(
             "eyeAspectRatioRight": processed_data.get_blink_right(),
             "eyeAspectRatioLeft": processed_data.get_blink_left(),
         }
-        if i < 5:
+        if i < 15:
             detector.set_correct_value(current_values)
         else:
             detector.detect(current_values, object_data[i]["faceDetect"])
