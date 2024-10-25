@@ -76,6 +76,7 @@ class detection:
             if faceDetect is False:
                 self.blink_stack = 0
                 self.distance_stack = 0
+                self.not_sitting_stack += 1
                 if (
                     self.not_sitting_stack
                     >= self.not_sitting_stack_threshold * self.frame_per_second
