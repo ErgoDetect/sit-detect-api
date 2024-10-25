@@ -1,5 +1,5 @@
 class detection:
-    def __init__(self, frame_per_second=1, correct_frame=5):
+    def __init__(self, frame_per_second=1, correct_frame=15):
         # Constants
         self.correct_frame = correct_frame
         self.frame_per_second = frame_per_second
@@ -18,11 +18,13 @@ class detection:
         self.sitting_stack = 0
         self.distance_stack = 0
         self.thoracic_stack = 0
+        self.not_sitting_stack = 0
 
         self.blink_stack_threshold = 5
         self.sitting_stack_threshold = 2700
         self.distance_stack_threshold = 30
         self.thoracic_stack_threshold = 2
+        self.not_sitting_stack_threshold = 5
         self.result = {
             "blink_alert": False,
             "sitting_alert": False,
@@ -73,8 +75,14 @@ class detection:
 
             if faceDetect is False:
                 self.blink_stack = 0
-                self.sitting_stack = 0
                 self.distance_stack = 0
+                if (
+                    self.not_sitting_stack
+                    >= self.not_sitting_stack_threshold * self.frame_per_second
+                ):
+                    self.sitting_stack = 0
+                else:
+                    self.sitting_stack += 1
             else:
                 self.sitting_stack += 1
 
@@ -153,7 +161,10 @@ class detection:
                 if self.result["sitting_alert"] is True:
                     self.timeline_result["sitting"][
                         len(self.timeline_result["sitting"]) - 1
-                    ].append(self.response_counter)
+                    ].append(
+                        self.response_counter
+                        - (self.not_sitting_stack_threshold * self.frame_per_second)
+                    )
                 self.result["sitting_alert"] = False
 
             if (
