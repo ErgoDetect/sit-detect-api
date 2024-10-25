@@ -24,13 +24,12 @@ def verify_user_mail(token: str, db: Session = Depends(get_db)):
     Verify a user's email using the verification token.
     """
     try:
-        # Decode the token and get the 'sub' (email) claim
         token_data = check_token(token, "verify")
-        user_mail = token_data.get("sub")
+        user_mail = token_data.get("user_id")
 
         if not user_mail:
             raise HTTPException(
-                status_code=400, detail="Invalid token: 'sub' claim missing"
+                status_code=400, detail="Invalid token: 'user_id' claim missing"
             )
 
         # Query the user from the database
