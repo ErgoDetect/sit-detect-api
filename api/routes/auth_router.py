@@ -28,14 +28,57 @@ from database.model import User, UserSession
 from database.schemas.Auth import LoginResponse, SignUpRequest, LoginRequest
 from auth.auth import authenticate_user
 
-
 import os
-
-# from dotenv import load_dotenv
-# load_dotenv()
 
 logger = logging.getLogger(__name__)
 auth_router = APIRouter()
+
+
+def verify_session(db, user_id, device_mac):
+    """Helper function to check if a user session is valid."""
+    return (
+        db.query(UserSession)
+        .filter(
+            UserSession.user_id == user_id,
+            UserSession.device_identifier == device_mac,
+        )
+        .first()
+    )
+
+
+def handle_token_check(token, token_type, db, device_mac):
+    """Helper function to check token validity and return the user session if valid."""
+    token_result = check_token(token, token_type)
+
+    if token_result.get("status") == "Authenticated":
+        user_id = token_result.get("user_id")
+        if not user_id:
+            logger.warning(f"Authenticated {token_type} token missing 'user_id' field.")
+            return {
+                "status": "LoginRequired",
+                "message": f"Invalid {token_type} token structure.",
+            }
+
+        user_session = verify_session(db, user_id, device_mac)
+        if user_session:
+            return {
+                "status": "Authenticated",
+                "message": f"{token_type.capitalize()} token valid, session found",
+                "user_id": user_id,
+            }
+        else:
+            return {
+                "status": "LoginRequired",
+                "message": f"Device mismatch, {token_type} token valid but session invalid",
+            }
+
+    elif token_result.get("status") == "Expired":
+        return {
+            "status": "Expired",
+            "message": f"{token_type.capitalize()} token expired",
+        }
+
+    return {"status": "LoginRequired", "message": f"Invalid {token_type} token"}
 
 
 @auth_router.post("/signup", status_code=status.HTTP_201_CREATED)
@@ -52,7 +95,6 @@ async def sign_up(
 
     # Step 2: Hash the password and create the user
     try:
-        # Hash the password (you can assume hash_password is already defined elsewhere)
         create_user(
             db, signup_data.email, signup_data.password, signup_data.display_name
         )
@@ -84,11 +126,6 @@ async def sign_up(
             os.path.dirname(__file__), "..", "..", "auth", "mail", "template.html"
         )
     )
-    logger.info(f"Template path: {template_path}")
-    html_content = load_email_template(template_path)
-
-    # Replace the placeholder in the template with the actual verification link
-    html_content = html_content.replace("{{ verification_link }}", verification_link)
 
     try:
         # Load the email template and replace the placeholder with the actual verification link
@@ -188,8 +225,6 @@ async def logout(
 
     login_method = db.query(User).filter(User.user_id == user_id).first().sign_up_method
 
-    # if login_method == "google":
-
     # Step 3: Clear authentication cookies
     response.delete_cookie(
         "access_token", httponly=False, path="/", samesite="none"
@@ -198,7 +233,7 @@ async def logout(
         "refresh_token", httponly=False, path="/", samesite="none"
     )  # Secure should be True in production
 
-    return {"Logout Successful"}
+    return {"message": "Logout Successful"}
 
 
 @auth_router.get("/status")
@@ -211,93 +246,31 @@ async def auth_status(request: Request, db: Session = Depends(get_db)):
     if not device_mac:
         return {"status": "LoginRequired", "message": "Device identifier is missing"}
 
-    user_id = None
-
-    # Validate access token
+    # First, check the access token
     if access_token:
-        access_result = check_token(access_token, "access")
-        if access_result.get("status") == "Authenticated":
-            user_id = access_result.get("user_id")
-            if user_id:
-                # Verify session in the database
-                user_session = (
-                    db.query(UserSession)
-                    .filter(
-                        UserSession.user_id == user_id,
-                        UserSession.device_identifier == device_mac,
-                    )
-                    .first()
-                )
+        access_check = handle_token_check(access_token, "access", db, device_mac)
+        if access_check["status"] == "Authenticated":
+            return access_check
 
-                if user_session:
-                    return {
-                        "status": "Authenticated",
-                        "message": "Session valid",
-                        "user_id": user_id,
-                    }
-                else:
-                    return {
-                        "status": "LoginRequired",
-                        "message": "Device mismatch, login required",
-                    }
-            else:
-                logger.warning("Authenticated access token missing 'user_id' field.")
+        # If access token expired but refresh token is present
+        if access_check["status"] == "Expired" and refresh_token:
+            refresh_check = handle_token_check(refresh_token, "refresh", db, device_mac)
+            if refresh_check["status"] == "Authenticated":
                 return {
-                    "status": "LoginRequired",
-                    "message": "Invalid access token structure.",
+                    "status": "Refresh",
+                    "message": "Access token expired, but refresh token is valid",
+                    "user_id": refresh_check["user_id"],
                 }
 
-        elif access_result.get("status") == "Expired" and refresh_token:
-            refresh_result = check_token(refresh_token, "refresh")
-            if refresh_result.get("status") == "Authenticated":
-                user_id = refresh_result.get("user_id")
-                if user_id:
-                    return {
-                        "status": "Refresh",
-                        "message": "Access token expired, but refresh token is valid",
-                        "user_id": user_id,
-                    }
-                else:
-                    logger.warning(
-                        "Authenticated refresh token missing 'user_id' field."
-                    )
-                    return {
-                        "status": "LoginRequired",
-                        "message": "Invalid refresh token structure.",
-                    }
-
-    # If no valid access token, check refresh token
+    # If no valid access token, check the refresh token
     if refresh_token:
-        refresh_result = check_token(refresh_token, "refresh")
-        if refresh_result.get("status") == "Authenticated":
-            user_id = refresh_result.get("user_id")
-            if user_id:
-                user_session = (
-                    db.query(UserSession)
-                    .filter(
-                        UserSession.user_id == user_id,
-                        UserSession.device_identifier == device_mac,
-                    )
-                    .first()
-                )
-
-                if user_session:
-                    return {
-                        "status": "Refresh",
-                        "message": "No access token, but refresh token is valid",
-                        "user_id": user_id,
-                    }
-                else:
-                    return {
-                        "status": "LoginRequired",
-                        "message": "Device mismatch, login required",
-                    }
-            else:
-                logger.warning("Authenticated refresh token missing 'user_id' field.")
-                return {
-                    "status": "LoginRequired",
-                    "message": "Invalid refresh token structure.",
-                }
+        refresh_check = handle_token_check(refresh_token, "refresh", db, device_mac)
+        if refresh_check["status"] == "Authenticated":
+            return {
+                "status": "Refresh",
+                "message": "No access token, but refresh token is valid",
+                "user_id": refresh_check["user_id"],
+            }
 
     # If no valid tokens or device mismatch, prompt login required
     return {
@@ -307,7 +280,9 @@ async def auth_status(request: Request, db: Session = Depends(get_db)):
 
 
 @auth_router.post("/refresh-token", response_model=Dict[str, str])
-def refresh_access_token(response: Response, request: Request):
+def refresh_access_token(
+    response: Response, request: Request, db: Session = Depends(get_db)
+):
     refresh_token = request.cookies.get("refresh_token")
     if not refresh_token:
         raise HTTPException(
@@ -330,8 +305,10 @@ def refresh_access_token(response: Response, request: Request):
             detail="Invalid refresh token payload",
         )
 
-    tokens = generate_and_set_tokens(response, {"sub": user_id, "email": email})
-    return {
-        "access_token": tokens["access_token"],
-        "refresh_token": tokens["refresh_token"],
-    }
+    generate_and_set_tokens(response, {"sub": user_id, "email": email})
+    user_session = db.query(UserSession).filter_by(user_id=user_id).first()
+    user_session.created_at = get_current_time()
+    user_session.expires_at = get_current_time() + timedelta(hours=1)
+    db.commit()
+
+    return {"message": "Access token refreshed successfully."}

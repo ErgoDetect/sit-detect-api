@@ -1,7 +1,9 @@
+from datetime import datetime
 import logging
 import os
+from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError, NoResultFound
 from api.request_user import get_current_user
@@ -9,7 +11,8 @@ from auth.mail.mail_config import load_email_template
 from auth.token import check_token
 from database.crud import delete_user, delete_user_sessions
 from database.database import get_db
-from database.model import User
+from database.model import SittingSession, User
+from database.schemas.User import SittingSessionResponse
 
 user_router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -101,3 +104,46 @@ def delete_user_db(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error",
         )
+
+    # Add other fields from the SittingSession model except for user_id
+
+
+@user_router.get("/history", response_model=List[SittingSessionResponse])
+def get_user_history(
+    db: Session = Depends(get_db), current_user=Depends(get_current_user)
+):
+    user_id = current_user["user_id"]
+    all_user_sessions = (
+        db.query(SittingSession).filter(SittingSession.user_id == user_id).all()
+    )
+
+    # Prepare response data
+    response_data = []
+    for session in all_user_sessions:
+        response_data.append(
+            {
+                "sitting_session_id": str(
+                    session.sitting_session_id
+                ),  # Convert UUID to string
+                "blink": (
+                    session.blink if isinstance(session.blink, list) else []
+                ),  # Ensure blink is a list
+                "sitting": (
+                    session.sitting if isinstance(session.sitting, list) else []
+                ),  # Ensure sitting is a list
+                "distance": (
+                    session.distance if isinstance(session.distance, list) else []
+                ),  # Ensure distance is a list
+                "thoracic": (
+                    session.thoracic if isinstance(session.thoracic, list) else []
+                ),  # Ensure thoracic is a list
+                "file_name": str(session.file_name),  # Ensure file_name is a list
+                "date": (
+                    session.date.isoformat()
+                    if isinstance(session.date, datetime)
+                    else str(session.date)
+                ),  # Convert datetime to string
+            }
+        )
+
+    return JSONResponse(content=response_data)
