@@ -107,6 +107,45 @@ def delete_user_db(
     # Add other fields from the SittingSession model except for user_id
 
 
+@user_router.get("/summary")
+def get_user_summary(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    # Query the database to get the user's summary data
+    user_id = current_user["user_id"]
+    user_summary = (
+        db.query(SittingSession)
+        .filter(
+            SittingSession.user_id == user_id,
+            SittingSession.sitting_session_id == session_id,
+        )
+        .first()  # Use .first() instead of .all() to get a single result
+    )
+
+    if user_summary:
+        response_data = {
+            "file_name": str(user_summary.file_name),
+            "blink": (
+                user_summary.blink if isinstance(user_summary.blink, list) else []
+            ),
+            "sitting": (
+                user_summary.sitting if isinstance(user_summary.sitting, list) else []
+            ),
+            "distance": (
+                user_summary.distance if isinstance(user_summary.distance, list) else []
+            ),
+            "thoracic": (
+                user_summary.thoracic if isinstance(user_summary.thoracic, list) else []
+            ),
+        }
+    else:
+        response_data = {"error": "Session not found"}
+
+    return JSONResponse(content=response_data)
+
+
 @user_router.get("/history", response_model=List[SittingSessionResponse])
 def get_user_history(
     db: Session = Depends(get_db), current_user=Depends(get_current_user)
@@ -124,24 +163,14 @@ def get_user_history(
                 "sitting_session_id": str(
                     session.sitting_session_id
                 ),  # Convert UUID to string
-                "blink": (
-                    session.blink if isinstance(session.blink, list) else []
-                ),  # Ensure blink is a list
-                "sitting": (
-                    session.sitting if isinstance(session.sitting, list) else []
-                ),  # Ensure sitting is a list
-                "distance": (
-                    session.distance if isinstance(session.distance, list) else []
-                ),  # Ensure distance is a list
-                "thoracic": (
-                    session.thoracic if isinstance(session.thoracic, list) else []
-                ),  # Ensure thoracic is a list
-                "file_name": str(session.file_name),  # Ensure file_name is a list
+                "file_name": str(session.file_name),
+                "thumbnail": str(session.thumbnail),  # Convert UUID to string
                 "date": (
                     session.date.isoformat()
                     if isinstance(session.date, datetime)
                     else str(session.date)
                 ),  # Convert datetime to string
+                "session_type": session.session_type,
             }
         )
 
