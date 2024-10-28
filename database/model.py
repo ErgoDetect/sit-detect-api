@@ -7,6 +7,7 @@ from sqlalchemy import (
     Boolean,
     UniqueConstraint,
     JSON,
+    Integer,
 )
 from sqlalchemy.orm import relationship
 from auth.token import get_current_time
@@ -100,5 +101,6 @@ class SittingSession(Base):
     thoracic = Column(JSON)
     file_name = Column(String)
     thumbnail = Column(String)
+    duration = Column(Integer)
     date = Column(DateTime, nullable=False, default=datetime.now)
     session_type = Column(String(50))

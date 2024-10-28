@@ -133,7 +133,7 @@ async def landmark_results(
 
             # Periodically update the database session
             if response_counter % 5 == 0:
-                update_sitting_session(detector, sitting_session, db)
+                update_sitting_session(detector, response_counter, sitting_session, db)
 
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected")
@@ -159,6 +159,7 @@ def initialize_session(acc_token, db):
             thoracic=[],
             date=date,
             session_type="stream",
+            duration=0,
         )
 
         db.add(db_sitting_session)
@@ -223,7 +224,7 @@ def handle_alerts(detector, last_alert_time, cooldown_periods, alert_thresholds)
     return triggered_alerts
 
 
-def update_sitting_session(detector, sitting_session, db):
+def update_sitting_session(detector, duration, sitting_session, db):
     """Update the sitting session in the database with detector timeline results."""
     try:
         timeline_result = detector.get_timeline_result()
@@ -231,6 +232,7 @@ def update_sitting_session(detector, sitting_session, db):
         sitting_session.sitting = timeline_result["sitting"]
         sitting_session.distance = timeline_result["distance"]
         sitting_session.thoracic = timeline_result["thoracic"]
+        sitting_session.duration = duration
         db.commit()
     except SQLAlchemyError as e:
         db.rollback()

@@ -65,6 +65,7 @@ async def video_process_result_upload(
         distance=timeline_result["distance"],
         thoracic=timeline_result["thoracic"],
         date=date,
+        duration=len(object_data),
     )
 
     try:
