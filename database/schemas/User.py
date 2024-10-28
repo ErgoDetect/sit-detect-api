@@ -9,6 +9,7 @@ class User(BaseModel):
 
 class VideoNameRequest(BaseModel):
     video_name: str
+    thumbnail: str
 
 
 class SittingSessionResponse(BaseModel):
