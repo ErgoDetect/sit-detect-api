@@ -99,6 +99,6 @@ class SittingSession(Base):
     distance = Column(JSON)
     thoracic = Column(JSON)
     file_name = Column(String)
-    date = Column(
-        DateTime, nullable=False, default=datetime.now
-    )  # Default to current timestamp
+    thumbnail = Column(String)
+    date = Column(DateTime, nullable=False, default=datetime.now)
+    session_type = Column(String(50))

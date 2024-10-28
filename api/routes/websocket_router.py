@@ -55,6 +55,7 @@ async def receive_video_name(
     try:
         # Get the video name from the request body
         video_name = request.video_name
+        thumbnail = request.thumbnail
 
         # Get the user ID from the current user information
         user_id = current_user["user_id"]
@@ -70,7 +71,7 @@ async def receive_video_name(
             raise HTTPException(status_code=404, detail="Sitting session not found")
 
         # Update video session in the database
-        update_video_session(video_name, sitting_session, db)
+        update_video_session(video_name, thumbnail, sitting_session, db)
         return {"message": "Video session updated successfully"}
 
     except Exception as e:
@@ -157,6 +158,7 @@ def initialize_session(acc_token, db):
             distance=[],
             thoracic=[],
             date=date,
+            session_type="stream",
         )
 
         db.add(db_sitting_session)
@@ -235,10 +237,11 @@ def update_sitting_session(detector, sitting_session, db):
         logger.error(f"Error updating sitting session: {e}")
 
 
-def update_video_session(video_name, sitting_session, db):
+def update_video_session(video_name, thumbnail, sitting_session, db):
     """Update the sitting session in the database with video file name."""
     try:
         sitting_session.file_name = video_name
+        sitting_session.thumbnail = thumbnail
         db.commit()
     except SQLAlchemyError as e:
         db.rollback()
