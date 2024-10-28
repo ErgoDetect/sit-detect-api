@@ -1,4 +1,4 @@
-from typing import List
+from typing import Any, Dict, List
 from pydantic import BaseModel, EmailStr
 
 
@@ -10,6 +10,12 @@ class User(BaseModel):
 class VideoNameRequest(BaseModel):
     video_name: str
     thumbnail: str
+
+
+class VideoUploadRequest(BaseModel):
+    video_name: str
+    thumbnail: str
+    files: List[Dict[str, Any]]
 
 
 class SittingSessionResponse(BaseModel):
