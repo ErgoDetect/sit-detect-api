@@ -141,6 +141,7 @@ def get_user_summary(
             "thoracic": (
                 user_summary.thoracic if isinstance(user_summary.thoracic, list) else []
             ),
+            "duration": user_summary.duration,
         }
     else:
         response_data = {"error": "Session not found"}
