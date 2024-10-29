@@ -1,6 +1,6 @@
 from datetime import datetime
 import logging
-from typing import Any, Dict, List
+from typing import List
 import uuid
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from requests import Session
@@ -16,6 +16,8 @@ from api.detection import detection
 from database.model import SittingSession
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 
+from database.schemas.User import VideoUploadRequest
+
 
 logger = logging.getLogger(__name__)
 
@@ -24,25 +26,24 @@ files_router = APIRouter()
 
 @files_router.post("/upload/video", status_code=status.HTTP_200_OK)
 async def video_process_result_upload(
-    file: Dict[
-        str, List[Dict[str, Any]]
-    ],  # Expecting a dict with a "file" key holding the list
+    request: VideoUploadRequest,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    # Access the file list
-    object_data = file.get("file")
+    # Validate file data presence
+    object_data = request.files
+    if not object_data:
+        raise HTTPException(status_code=400, detail="No file data provided")
 
+    # Initialize and extract variables
     detector = detection(frame_per_second=15)
     sitting_session_id = uuid.uuid4()
     user_id = current_user["user_id"]
     date = datetime.now()
 
-    # Process the incoming data
-    for i in range(0, len(object_data)):
-        processed_data = processData(
-            object_data[i]
-        )  # Assuming each dict has the necessary data
+    # Process each frame entry in object_data
+    for i, entry in enumerate(object_data):
+        processed_data = processData(entry)
         current_values = {
             "shoulderPosition": processed_data.get_shoulder_position(),
             "diameterRight": processed_data.get_diameter_right(),
@@ -50,38 +51,46 @@ async def video_process_result_upload(
             "eyeAspectRatioRight": processed_data.get_blink_right(),
             "eyeAspectRatioLeft": processed_data.get_blink_left(),
         }
+
+        # Set baseline values if within first 15 frames; otherwise, detect issues
         if i < 15:
             detector.set_correct_value(current_values)
         else:
-            detector.detect(current_values, object_data[i]["faceDetect"])
+            detector.detect(current_values, entry.get("faceDetect"))
+
+    # Retrieve detection results
     timeline_result = detector.get_timeline_result()
-    # Create and commit a new SittingSession
+
+    # Create SittingSession record
     db_sitting_session = SittingSession(
         sitting_session_id=sitting_session_id,
         user_id=user_id,
-        # sitting_session=detector.get_timeline_result(),
         blink=timeline_result["blink"],
         sitting=timeline_result["sitting"],
         distance=timeline_result["distance"],
         thoracic=timeline_result["thoracic"],
         date=date,
         duration=len(object_data),
+        file_name=request.video_name,
+        thumbnail=request.thumbnail,
+        session_type="video",
     )
 
+    # Database transaction
     try:
         db.add(db_sitting_session)
         db.commit()
         db.refresh(db_sitting_session)
         return {"message": "Process result received successfully."}
-    except IntegrityError as e:
+    except IntegrityError:
         db.rollback()
         raise HTTPException(
-            status_code=400, detail=f"Sitting session id already exists : {e}"
+            status_code=400, detail="A session with this ID already exists."
         )
-    except SQLAlchemyError as e:
+    except SQLAlchemyError:
         db.rollback()
         raise HTTPException(
-            status_code=500, detail=f"Error creating sitting session in database : {e}"
+            status_code=500, detail="Database error while creating sitting session."
         )
 
 

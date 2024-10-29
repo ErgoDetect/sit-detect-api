@@ -126,6 +126,8 @@ def get_user_summary(
 
     if user_summary:
         response_data = {
+            "session_id": str(user_summary.sitting_session_id),
+            "date": (str(user_summary.date)),
             "file_name": str(user_summary.file_name),
             "blink": (
                 user_summary.blink if isinstance(user_summary.blink, list) else []
@@ -166,11 +168,7 @@ def get_user_history(
                 ),  # Convert UUID to string
                 "file_name": str(session.file_name),
                 "thumbnail": str(session.thumbnail),  # Convert UUID to string
-                "date": (
-                    session.date.isoformat()
-                    if isinstance(session.date, datetime)
-                    else str(session.date)
-                ),  # Convert datetime to string
+                "date": (str(session.date)),  # Convert datetime to string
                 "session_type": session.session_type,
             }
         )
