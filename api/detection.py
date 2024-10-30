@@ -66,7 +66,8 @@ class detection:
             if input["shoulderPosition"] is None:
                 self.thoracic_stack = 0
             elif (
-                self.correct_values["shoulderPosition"] + 0.05
+                self.correct_values.get("shoulderPosition") is not None
+                and self.correct_values["shoulderPosition"] + 0.05
                 <= input["shoulderPosition"]
             ):
                 self.thoracic_stack += 1

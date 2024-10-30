@@ -174,3 +174,52 @@ def get_user_history(
         )
 
     return JSONResponse(content=response_data)
+
+
+@user_router.get("/history/latest")
+def get_latest_user_history(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    # Query the database to get the user's summary data
+    user_id = current_user["user_id"]
+    latest_user_history = (
+        db.query(SittingSession)
+        .filter(SittingSession.user_id == user_id)
+        .order_by(
+            SittingSession.date.desc()
+        )  # Replace 'timestamp' with the actual date column
+        .first()
+    )
+
+    if latest_user_history:
+        response_data = {
+            "session_id": str(latest_user_history.sitting_session_id),
+            "date": (str(latest_user_history.date)),
+            "file_name": str(latest_user_history.file_name),
+            "blink": (
+                latest_user_history.blink
+                if isinstance(latest_user_history.blink, list)
+                else []
+            ),
+            "sitting": (
+                latest_user_history.sitting
+                if isinstance(latest_user_history.sitting, list)
+                else []
+            ),
+            "distance": (
+                latest_user_history.distance
+                if isinstance(latest_user_history.distance, list)
+                else []
+            ),
+            "thoracic": (
+                latest_user_history.thoracic
+                if isinstance(latest_user_history.thoracic, list)
+                else []
+            ),
+            "duration": latest_user_history.duration,
+        }
+    else:
+        response_data = {"error": "Session not found"}
+
+    return JSONResponse(content=response_data)
