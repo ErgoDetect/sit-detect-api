@@ -12,7 +12,8 @@ from auth.token import check_token
 from database.crud import delete_user, delete_user_sessions
 from database.database import get_db
 from database.model import SittingSession, User
-from database.schemas.User import SittingSessionResponse
+from database.schemas.Response import SessionSummary
+from database.schemas.Response import SittingSessionResponse
 
 user_router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -107,46 +108,40 @@ def delete_user_db(
     # Add other fields from the SittingSession model except for user_id
 
 
-@user_router.get("/summary")
+@user_router.get("/summary", response_model=SessionSummary)
 def get_user_summary(
     session_id: str,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    # Query the database to get the user's summary data
+    # Retrieve the user ID
     user_id = current_user["user_id"]
+
+    # Query the database for the user's session
     user_summary = (
         db.query(SittingSession)
         .filter(
             SittingSession.user_id == user_id,
             SittingSession.sitting_session_id == session_id,
         )
-        .first()  # Use .first() instead of .all() to get a single result
+        .first()
     )
 
-    if user_summary:
-        response_data = {
-            "session_id": str(user_summary.sitting_session_id),
-            "date": (str(user_summary.date)),
-            "file_name": str(user_summary.file_name),
-            "blink": (
-                user_summary.blink if isinstance(user_summary.blink, list) else []
-            ),
-            "sitting": (
-                user_summary.sitting if isinstance(user_summary.sitting, list) else []
-            ),
-            "distance": (
-                user_summary.distance if isinstance(user_summary.distance, list) else []
-            ),
-            "thoracic": (
-                user_summary.thoracic if isinstance(user_summary.thoracic, list) else []
-            ),
-            "duration": user_summary.duration,
-        }
-    else:
-        response_data = {"error": "Session not found"}
+    # Raise an HTTPException if the session is not found
+    if not user_summary:
+        raise HTTPException(status_code=404, detail="Session not found")
 
-    return JSONResponse(content=response_data)
+    # Return the session data using the Pydantic model
+    return SessionSummary(
+        session_id=str(user_summary.sitting_session_id),
+        date=str(user_summary.date),
+        file_name=str(user_summary.file_name),
+        blink=user_summary.blink,
+        sitting=user_summary.sitting,
+        distance=user_summary.distance,
+        thoracic=user_summary.thoracic,
+        duration=user_summary.duration,
+    )
 
 
 @user_router.get("/history", response_model=List[SittingSessionResponse])

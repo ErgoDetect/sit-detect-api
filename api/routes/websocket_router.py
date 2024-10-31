@@ -90,6 +90,7 @@ async def landmark_results(
     # Initialize variables outside the loop
     detector = detection(frame_per_second=15) if stream else None
     sitting_session = None
+    sitting_session_id = None
     response_counter = 0
     last_alert_time = {alert_type: None for alert_type in ALERT_TYPES}
     object_data = None  # Placeholder for later use
@@ -106,13 +107,18 @@ async def landmark_results(
 
             # Initialize session and detector if not already done
             if response_counter == 1 and not sitting_session:
-                sitting_session = initialize_session(acc_token, db)
+                sitting_session, sitting_session_id = initialize_session(acc_token, db)
 
             # Set baseline values for the first 15 frames
             if response_counter <= 15:
                 detector.set_correct_value(current_values)
                 if response_counter == 15:
-                    await websocket.send_json({"type": "initialization_success"})
+                    await websocket.send_json(
+                        {
+                            "type": "initialization_success",
+                            "sitting_session_id": str(sitting_session_id),
+                        }
+                    )
                     logger.info("Initialization success message sent")
             else:
                 detector.detect(current_values, object_data["data"].get("faceDetect"))
@@ -137,6 +143,7 @@ async def landmark_results(
 
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected")
+
     except Exception as e:
         logger.error(f"Error in WebSocket connection: {e}")
         if websocket.client_state == WebSocketState.CONNECTED:
@@ -164,7 +171,7 @@ def initialize_session(acc_token, db):
 
         db.add(db_sitting_session)
         db.commit()
-        return db_sitting_session
+        return db_sitting_session, sitting_session_id  # Return both session and ID
 
     except (IntegrityError, SQLAlchemyError) as e:
         db.rollback()
