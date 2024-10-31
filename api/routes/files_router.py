@@ -81,7 +81,7 @@ async def video_process_result_upload(
         db.add(db_sitting_session)
         db.commit()
         db.refresh(db_sitting_session)
-        return {"message": "Process result received successfully."}
+        return {"sitting_session_id": str(sitting_session_id)}
     except IntegrityError:
         db.rollback()
         raise HTTPException(
