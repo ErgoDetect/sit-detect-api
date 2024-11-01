@@ -1,10 +1,12 @@
 class detection:
-    def __init__(self, frame_per_second=1, correct_frame=15):
+    def __init__(self, frame_per_second=1, correct_frame=15, focal_length=0):
         # Constants
         self.correct_frame = correct_frame
         self.frame_per_second = frame_per_second
         self.ear_threshold_low = 0.4
         self.ear_threshold_high = 0.5
+        self.focal_length = focal_length
+        self.iris_diameter = 1.17  # cm
 
         # Initialization of variables
         self.response_counter = 0
@@ -102,11 +104,25 @@ class detection:
                     correct_diameter_right or 0, correct_diameter_left or 0
                 )
 
-                if self.correct_distance and self.latest_nearest_distance:
-                    if self.correct_distance * 1.10 <= self.latest_nearest_distance:
-                        self.distance_stack += 1
-                    else:
-                        self.distance_stack = 0
+                if self.focal_length != 0:
+                    if self.correct_distance and self.latest_nearest_distance:
+                        if self.correct_distance * 1.10 <= self.latest_nearest_distance:
+                            self.distance_stack += 1
+                        else:
+                            self.distance_stack = 0
+                else:
+                    if self.latest_nearest_distance:
+                        real_distance = (
+                            self.focal_length
+                            * (self.latest_nearest_distance * self.iris_diameter)
+                            / 10
+                        )
+                        print(real_distance)
+                        # print ตรงนี้ real_distance
+                        if real_distance > 40:  # 40 cm
+                            self.distance_stack += 1
+                        else:
+                            self.distance_stack = 0
 
                 # Update blink_stack
                 ear_left = input.get("eyeAspectRatioLeft")
