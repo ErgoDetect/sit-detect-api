@@ -4,6 +4,7 @@ import os
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse, JSONResponse
+from sqlalchemy import desc
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError, NoResultFound
 from api.request_user import get_current_user
@@ -150,7 +151,10 @@ def get_user_history(
 ):
     user_id = current_user["user_id"]
     all_user_sessions = (
-        db.query(SittingSession).filter(SittingSession.user_id == user_id).all()
+        db.query(SittingSession)
+        .filter(SittingSession.user_id == user_id)
+        .order_by(desc(SittingSession.date))
+        .all()
     )
 
     # Prepare response data

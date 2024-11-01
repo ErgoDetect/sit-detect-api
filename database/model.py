@@ -104,3 +104,4 @@ class SittingSession(Base):
     duration = Column(Integer)
     date = Column(DateTime, nullable=False, default=datetime.now)
     session_type = Column(String(50))
+    is_complete = Column(Boolean, nullable=False)

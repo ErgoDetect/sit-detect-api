@@ -74,6 +74,7 @@ async def video_process_result_upload(
         file_name=request.video_name,
         thumbnail=request.thumbnail,
         session_type="video",
+        is_complete=True,
     )
 
     # Database transaction
