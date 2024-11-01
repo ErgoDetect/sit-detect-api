@@ -89,12 +89,19 @@ class detection:
                     self.sitting_stack += 1
             else:
                 self.sitting_stack += 1
+
                 # Update distance_stack
                 diameter_right = input.get("diameterRight")
                 diameter_left = input.get("diameterLeft")
+                correct_diameter_right = self.correct_values.get("diameterRight")
+                correct_diameter_left = self.correct_values.get("diameterLeft")
                 self.latest_nearest_distance = max(
                     diameter_right or self.latest_nearest_distance,
                     diameter_left or self.latest_nearest_distance,
+                )
+
+                self.correct_distance = max(
+                    correct_diameter_right or 0, correct_diameter_left or 0
                 )
 
                 print("diameterRight:", diameter_right)
@@ -109,33 +116,25 @@ class detection:
 
                 print("Calculated real_distance:", real_distance)
 
-                if (
-                    self.focal_length != 0
-                ):  # Use focal_length-based calculation if provided
-                    correct_diameter = max(
-                        self.correct_values.get("diameterRight", 0),
-                        self.correct_values.get("diameterLeft", 0),
-                    )
-
-                    if correct_diameter and self.latest_nearest_distance:
-                        if correct_diameter * 1.10 <= self.latest_nearest_distance:
+                if self.focal_length != 0:
+                    if self.correct_distance and self.latest_nearest_distance:
+                        if self.correct_distance * 1.10 <= self.latest_nearest_distance:
                             self.distance_stack += 1
                         else:
                             self.distance_stack = 0
-                elif (
-                    self.latest_nearest_distance
-                ):  # Calculate real_distance if focal_length is set
-                    real_distance = (
-                        self.focal_length
-                        * (self.latest_nearest_distance * self.iris_diameter)
-                        / 10
-                    )
-
-                    print("Calculated real_distance:", real_distance)
-                    if real_distance > 40:  # Threshold in cm
-                        self.distance_stack += 1
-                    else:
-                        self.distance_stack = 0
+                else:
+                    if self.latest_nearest_distance:
+                        real_distance = (
+                            self.focal_length
+                            * (self.latest_nearest_distance * self.iris_diameter)
+                            / 10
+                        )
+                        print(real_distance)
+                        # print ตรงนี้ real_distance
+                        if real_distance > 40:  # 40 cm
+                            self.distance_stack += 1
+                        else:
+                            self.distance_stack = 0
 
                 # Update blink_stack
                 ear_left = input.get("eyeAspectRatioLeft")
@@ -158,58 +157,84 @@ class detection:
                     self.blink_detected = False
                     self.blink_stack += 1
 
-            # Evaluate and set alerts
             if self.blink_stack >= self.blink_stack_threshold * self.frame_per_second:
-                if not self.result["blink_alert"]:
-                    self.timeline_result["blink"].append(
-                        [self.response_counter - self.blink_stack]
+                if self.result["blink_alert"] is False:
+                    self.timeline_result["blink"].append([])
+                    self.timeline_result["blink"][
+                        len(self.timeline_result["blink"]) - 1
+                    ].append(
+                        self.response_counter
+                        - (self.blink_stack_threshold * self.frame_per_second)
                     )
                 self.result["blink_alert"] = True
             else:
-                if self.result["blink_alert"]:
-                    self.timeline_result["blink"][-1].append(self.response_counter)
+                if self.result["blink_alert"] is True:
+                    self.timeline_result["blink"][
+                        len(self.timeline_result["blink"]) - 1
+                    ].append(self.response_counter)
                 self.result["blink_alert"] = False
 
             if (
                 self.sitting_stack
                 >= self.sitting_stack_threshold * self.frame_per_second
             ):
-                if not self.result["sitting_alert"]:
-                    self.timeline_result["sitting"].append(
-                        [self.response_counter - self.sitting_stack]
+                if self.result["sitting_alert"] is False:
+                    self.timeline_result["sitting"].append([])
+                    self.timeline_result["sitting"][
+                        len(self.timeline_result["sitting"]) - 1
+                    ].append(
+                        self.response_counter
+                        - (self.sitting_stack_threshold * self.frame_per_second)
                     )
                 self.result["sitting_alert"] = True
             else:
-                if self.result["sitting_alert"]:
-                    self.timeline_result["sitting"][-1].append(self.response_counter)
+                if self.result["sitting_alert"] is True:
+                    self.timeline_result["sitting"][
+                        len(self.timeline_result["sitting"]) - 1
+                    ].append(
+                        self.response_counter
+                        - (self.not_sitting_stack_threshold * self.frame_per_second)
+                    )
                 self.result["sitting_alert"] = False
 
             if (
                 self.distance_stack
                 >= self.distance_stack_threshold * self.frame_per_second
             ):
-                if not self.result["distance_alert"]:
-                    self.timeline_result["distance"].append(
-                        [self.response_counter - self.distance_stack]
+                if self.result["distance_alert"] is False:
+                    self.timeline_result["distance"].append([])
+                    self.timeline_result["distance"][
+                        len(self.timeline_result["distance"]) - 1
+                    ].append(
+                        self.response_counter
+                        - (self.distance_stack_threshold * self.frame_per_second)
                     )
                 self.result["distance_alert"] = True
             else:
-                if self.result["distance_alert"]:
-                    self.timeline_result["distance"][-1].append(self.response_counter)
+                if self.result["distance_alert"] is True:
+                    self.timeline_result["distance"][
+                        len(self.timeline_result["distance"]) - 1
+                    ].append(self.response_counter)
                 self.result["distance_alert"] = False
 
             if (
                 self.thoracic_stack
                 >= self.thoracic_stack_threshold * self.frame_per_second
             ):
-                if not self.result["thoracic_alert"]:
-                    self.timeline_result["thoracic"].append(
-                        [self.response_counter - self.thoracic_stack]
+                if self.result["thoracic_alert"] is False:
+                    self.timeline_result["thoracic"].append([])
+                    self.timeline_result["thoracic"][
+                        len(self.timeline_result["thoracic"]) - 1
+                    ].append(
+                        self.response_counter
+                        - (self.thoracic_stack_threshold * self.frame_per_second)
                     )
                 self.result["thoracic_alert"] = True
             else:
-                if self.result["thoracic_alert"]:
-                    self.timeline_result["thoracic"][-1].append(self.response_counter)
+                if self.result["thoracic_alert"] is True:
+                    self.timeline_result["thoracic"][
+                        len(self.timeline_result["thoracic"]) - 1
+                    ].append(self.response_counter)
                 self.result["thoracic_alert"] = False
 
             if self.response_counter >= 7200 * self.frame_per_second:

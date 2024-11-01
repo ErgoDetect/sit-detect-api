@@ -176,9 +176,7 @@ async def landmark_results(
 
                     # Periodically update the database session
                     if response_counter % 5 == 0:
-                        update_sitting_session(
-                            detector, response_counter, sitting_session, db
-                        )
+                        update_sitting_session(detector, sitting_session, db)
                 else:
                     logger.warning("Unexpected message format, missing 'data' key.")
 
@@ -187,16 +185,21 @@ async def landmark_results(
                     session_end = time.time()
                     session_duration = session_end - session_start
                     logger.info(f"Session Duration: {session_duration} seconds")
-                end_sitting_session(sitting_session, db)
+                end_sitting_session(sitting_session, session_duration, db)
                 logger.info("WebSocket disconnected")
                 break  # Exit loop to clean up resources on disconnect
 
             except Exception as e:
                 logger.error(f"Error in WebSocket connection: {e}")
-                if websocket.client_state == WebSocketState.CONNECTED:
-                    await websocket.close()
-                break
-
+                if "401: Token has expired" in str(e):
+                    if websocket.client_state == WebSocketState.CONNECTED:
+                        await websocket.close(code=4001)
+                else:
+                    # Handle other exceptions with a general close code
+                    if websocket.client_state == WebSocketState.CONNECTED:
+                        await websocket.close(
+                            code=1000, reason="Unexpected server error"
+                        )
     except Exception as e:
         logger.error(f"Fatal error in WebSocket connection: {e}")
 
@@ -280,7 +283,7 @@ def handle_alerts(detector, last_alert_time, cooldown_periods, alert_thresholds)
     return triggered_alerts
 
 
-def update_sitting_session(detector, duration, sitting_session, db):
+def update_sitting_session(detector, sitting_session, db):
     """Update the sitting session in the database with detector timeline results."""
     try:
         timeline_result = detector.get_timeline_result()
@@ -288,18 +291,18 @@ def update_sitting_session(detector, duration, sitting_session, db):
         sitting_session.sitting = timeline_result["sitting"]
         sitting_session.distance = timeline_result["distance"]
         sitting_session.thoracic = timeline_result["thoracic"]
-        sitting_session.duration = duration
         db.commit()
     except SQLAlchemyError as e:
         db.rollback()
         logger.error(f"Error updating sitting session: {e}")
 
 
-def end_sitting_session(sitting_session, db):
+def end_sitting_session(sitting_session, duration, db):
     """Mark the sitting session as complete."""
     try:
         if sitting_session:
             sitting_session.is_complete = True
+            sitting_session.duration = duration
             db.commit()
     except SQLAlchemyError as e:
         db.rollback()
