@@ -3,8 +3,10 @@ import logging
 from typing import List
 import uuid
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from pathlib import Path
 from requests import Session
 
+from api.calibration import calibrate_camera
 from api.image_processing import download_file, receive_upload_images
 from api.procressData import processData
 from api.request_user import get_current_user
@@ -95,12 +97,32 @@ async def video_process_result_upload(
         )
 
 
-@files_router.post("/upload/images")
-async def upload_images(
-    files: List[UploadFile] = File(...), user_id: str = Depends(get_current_user)
+@files_router.post("/calibration")
+async def upload_and_calibrate_images(
+    files: List[UploadFile] = File(...), current_user: str = Depends(get_current_user)
 ):
-    # Process the uploaded files
-    return await receive_upload_images(files)
+    # Step 1: Upload and save images
+    try:
+        upload_response = await receive_upload_images(files)
+        logger.info("Images uploaded successfully.")
+        image_paths = [Path(path) for path in upload_response["file_paths"]]
+    except HTTPException as e:
+        logger.error(f"Error in uploading images: {e.detail}")
+        raise HTTPException(status_code=500, detail="Failed to upload images.")
+
+    # Step 2: Calibrate the camera using the saved images
+    calibration_data = calibrate_camera(image_paths)
+    if calibration_data is None:
+        logger.error("Calibration failed due to insufficient valid images.")
+        raise HTTPException(
+            status_code=400, detail="Calibration failed: No valid images found."
+        )
+
+    # Step 3: Return the calibration data
+    return {
+        "message": "Calibration successful",
+        "calibration_data": calibration_data,
+    }
 
 
 @files_router.get("/download/{filename}")

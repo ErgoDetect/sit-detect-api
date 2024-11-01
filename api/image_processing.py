@@ -1,5 +1,4 @@
 import aiofiles
-import shutil
 from fastapi import HTTPException, UploadFile
 from pathlib import Path
 import cv2

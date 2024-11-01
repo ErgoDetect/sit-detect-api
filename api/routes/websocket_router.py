@@ -81,10 +81,19 @@ async def receive_video_name(
 
 @websocket_router.websocket("/results")
 async def landmark_results(
-    websocket: WebSocket, db: Session = Depends(get_db), stream: bool = False
+    websocket: WebSocket,
+    db: Session = Depends(get_db),
+    stream: bool = False,
+    focal_length_enabled: bool = False,
 ):
     await websocket.accept()
     acc_token = websocket.cookies.get("access_token")
+    if focal_length_enabled:
+        focal_length_message = await websocket.receive_text()
+        message_data = json.loads(focal_length_message)
+        focal_length_value = message_data["payload"]
+        logger.info(focal_length_value)
+
     logger.info("WebSocket connection accepted")
 
     # Initialize variables outside the loop
