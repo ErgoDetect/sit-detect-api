@@ -142,6 +142,7 @@ async def landmark_results(
                 update_sitting_session(detector, response_counter, sitting_session, db)
 
     except WebSocketDisconnect:
+        end_sitting_session(sitting_session, db)
         logger.info("WebSocket disconnected")
 
     except Exception as e:
@@ -167,6 +168,7 @@ def initialize_session(acc_token, db):
             date=date,
             session_type="stream",
             duration=0,
+            is_complete=False,
         )
 
         db.add(db_sitting_session)
@@ -240,6 +242,15 @@ def update_sitting_session(detector, duration, sitting_session, db):
         sitting_session.distance = timeline_result["distance"]
         sitting_session.thoracic = timeline_result["thoracic"]
         sitting_session.duration = duration
+        db.commit()
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"Error updating sitting session: {e}")
+
+
+def end_sitting_session(sitting_session, db):
+    try:
+        sitting_session.is_complete = True
         db.commit()
     except SQLAlchemyError as e:
         db.rollback()
