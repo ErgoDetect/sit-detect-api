@@ -104,7 +104,7 @@ class detection:
                     correct_diameter_right or 0, correct_diameter_left or 0
                 )
 
-                if self.focal_length != 0:
+                if self.focal_length == 0:
                     if self.correct_distance and self.latest_nearest_distance:
                         if self.correct_distance * 1.10 <= self.latest_nearest_distance:
                             self.distance_stack += 1
