@@ -184,7 +184,7 @@ def get_latest_user_history(
     user_id = current_user["user_id"]
     latest_user_history = (
         db.query(SittingSession)
-        .filter(SittingSession.user_id == user_id)
+        .filter(SittingSession.user_id == user_id, SittingSession.is_complete == True)
         .order_by(
             SittingSession.date.desc()
         )  # Replace 'timestamp' with the actual date column
