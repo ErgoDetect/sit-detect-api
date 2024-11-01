@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import time
 import json
 import logging
 import uuid
@@ -88,12 +89,6 @@ async def landmark_results(
 ):
     await websocket.accept()
     acc_token = websocket.cookies.get("access_token")
-    if focal_length_enabled:
-        focal_length_message = await websocket.receive_text()
-        message_data = json.loads(focal_length_message)
-        focal_length_value = message_data["payload"]
-        logger.info(focal_length_value)
-
     logger.info("WebSocket connection accepted")
 
     # Initialize variables outside the loop
@@ -106,62 +101,92 @@ async def landmark_results(
     sitting_session_id = None
     response_counter = 0
     last_alert_time = {alert_type: None for alert_type in ALERT_TYPES}
-    object_data = None  # Placeholder for later use
+    focal_length_values = None
+    set_focal_length = False
+
+    if focal_length_enabled and not set_focal_length and focal_length_values is None:
+        init_message = await websocket.receive_text()
+        init_data = json.loads(init_message)
+        focal_length_data = init_data.get("focal_length")
+        if focal_length_data:
+            set_focal_length = True
+            focal_length_values = focal_length_data
 
     try:
+        logger.info(focal_length_values)
         while stream:
-            # Receive the message and process data if streaming
-            message = await websocket.receive_text()
-            object_data = json.loads(message)
-            processed_data = processData(object_data["data"])
-            current_values = extract_current_values(processed_data)
+            try:
+                # Receive and process streaming messages
+                message = await websocket.receive_text()
+                message_data = json.loads(message)
 
-            response_counter += 1
+                # Check if it's a streaming data message
+                if "data" in message_data:
+                    object_data = message_data["data"]
+                    processed_data = processData(object_data)
+                    current_values = extract_current_values(processed_data)
 
-            # Initialize session and detector if not already done
-            if response_counter == 1 and not sitting_session:
-                sitting_session, sitting_session_id = initialize_session(acc_token, db)
+                    response_counter += 1
 
-            # Set baseline values for the first 15 frames
-            if response_counter <= 15:
-                detector.set_correct_value(current_values)
-                if response_counter == 15:
+                    # Initialize session and detector if not already done
+                    if response_counter == 1 and not sitting_session:
+                        sitting_session, sitting_session_id = initialize_session(
+                            acc_token, db
+                        )
+
+                    # Set baseline values for the first 15 frames
+                    if response_counter <= 15:
+                        detector.set_correct_value(current_values)
+                        if response_counter == 15:
+                            await websocket.send_json(
+                                {
+                                    "type": "initialization_success",
+                                    "sitting_session_id": str(sitting_session_id),
+                                }
+                            )
+                            logger.info("Initialization success message sent")
+                    else:
+                        session_start = time.time()
+                        detector.detect(current_values, object_data.get("faceDetect"))
+
+                    # Send the status of all topics in every loop iteration
                     await websocket.send_json(
-                        {
-                            "type": "initialization_success",
-                            "sitting_session_id": str(sitting_session_id),
-                        }
+                        {"type": "all_topic_alerts", "data": prepare_alert(detector)}
                     )
-                    logger.info("Initialization success message sent")
-            else:
-                detector.detect(current_values, object_data["data"].get("faceDetect"))
 
-            # Always send the status of all topics in every loop iteration
-            await websocket.send_json(
-                {"type": "all_topic_alerts", "data": prepare_alert(detector)}
-            )
+                    # Handle and send alerts based on thresholds and cooldowns
+                    triggered_alerts = handle_alerts(
+                        detector, last_alert_time, cooldown_periods, alert_thresholds
+                    )
+                    if triggered_alerts:
+                        await websocket.send_json(
+                            {"type": "triggered_alerts", "data": triggered_alerts}
+                        )
 
-            # Handle and send alerts based on thresholds and cooldowns
-            triggered_alerts = handle_alerts(
-                detector, last_alert_time, cooldown_periods, alert_thresholds
-            )
-            if triggered_alerts:
-                await websocket.send_json(
-                    {"type": "triggered_alerts", "data": triggered_alerts}
-                )
+                    # Periodically update the database session
+                    if response_counter % 5 == 0:
+                        update_sitting_session(
+                            detector, response_counter, sitting_session, db
+                        )
+                else:
+                    logger.warning("Unexpected message format, missing 'data' key.")
 
-            # Periodically update the database session
-            if response_counter % 5 == 0:
-                update_sitting_session(detector, response_counter, sitting_session, db)
+            except WebSocketDisconnect:
+                end_sitting_session(sitting_session, db)
+                session_end = time.time()
+                session_duration = session_end - session_start
+                print(session_duration)
+                logger.info("WebSocket disconnected")
+                break  # Exit loop to clean up resources on disconnect
 
-    except WebSocketDisconnect:
-        end_sitting_session(sitting_session, db)
-        logger.info("WebSocket disconnected")
+            except Exception as e:
+                logger.error(f"Error in WebSocket connection: {e}")
+                if websocket.client_state == WebSocketState.CONNECTED:
+                    await websocket.close()
+                break
 
     except Exception as e:
-        logger.error(f"Error in WebSocket connection: {e}")
-        if websocket.client_state == WebSocketState.CONNECTED:
-            await websocket.close()
+        logger.error(f"Fatal error in WebSocket connection: {e}")
 
 
 def initialize_session(acc_token, db):
