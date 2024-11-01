@@ -11,15 +11,15 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.websockets import WebSocketState
-from requests import Session
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
+
 from api.procressData import processData
 from api.request_user import get_current_user
 from auth.token import LOCAL_TZ, get_current_time, get_sub_from_token
 from api.detection import detection
 from database.database import get_db
 from database.model import SittingSession
-from sqlalchemy.exc import SQLAlchemyError, IntegrityError
-
 from database.schemas.User import VideoNameRequest
 
 logger = logging.getLogger(__name__)
@@ -44,9 +44,6 @@ alert_thresholds = {
 }
 
 
-# Define a Pydantic model for input validation
-
-
 @websocket_router.post("/video_name")
 async def receive_video_name(
     request: VideoNameRequest,
@@ -54,11 +51,9 @@ async def receive_video_name(
     current_user: dict = Depends(get_current_user),
 ):
     try:
-        # Get the video name from the request body
+        # Get video name and thumbnail from request
         video_name = request.video_name
         thumbnail = request.thumbnail
-
-        # Get the user ID from the current user information
         user_id = current_user["user_id"]
 
         # Find the most recent sitting session for the user
@@ -91,45 +86,59 @@ async def landmark_results(
     acc_token = websocket.cookies.get("access_token")
     logger.info("WebSocket connection accepted")
 
+    focal_length_values = None
+    set_focal_length = False
+    detector = None
+
+    # Process initial focal length data if enabled
+    if focal_length_enabled and not set_focal_length:
+        try:
+            init_message = await websocket.receive_text()
+            init_data = json.loads(init_message)
+            focal_length_data = init_data.get("focal_length")
+            if focal_length_data:
+                calibration_data = focal_length_data.get("calibration_data")
+                if calibration_data:
+                    camera_matrix = calibration_data.get("cameraMatrix")
+                    if camera_matrix:
+                        fx = camera_matrix[0][0]  # Focal length in the x-direction
+                        fy = camera_matrix[1][1]  # Focal length in the y-direction
+                        focal_length_values = (fx + fy) / 2  # Average focal length
+                        detector = detection(
+                            frame_per_second=15, focal_length=focal_length_values
+                        )
+                        set_focal_length = True
+        except Exception as e:
+            logger.warning(f"Error receiving focal length data: {e}")
+
     # Initialize variables outside the loop
-    detector = (
-        detection(frame_per_second=15, focal_length=focal_length_value)
-        if stream
-        else None
-    )
+    session_start = None
     sitting_session = None
     sitting_session_id = None
     response_counter = 0
     last_alert_time = {alert_type: None for alert_type in ALERT_TYPES}
-    focal_length_values = None
-    set_focal_length = False
-
-    if focal_length_enabled and not set_focal_length and focal_length_values is None:
-        init_message = await websocket.receive_text()
-        init_data = json.loads(init_message)
-        focal_length_data = init_data.get("focal_length")
-        if focal_length_data:
-            set_focal_length = True
-            focal_length_values = focal_length_data
 
     try:
-        logger.info(focal_length_values)
+        logger.info(f"Focal length values: {focal_length_values}")
+
         while stream:
             try:
                 # Receive and process streaming messages
                 message = await websocket.receive_text()
                 message_data = json.loads(message)
 
-                # Check if it's a streaming data message
                 if "data" in message_data:
                     object_data = message_data["data"]
                     processed_data = processData(object_data)
                     current_values = extract_current_values(processed_data)
+                    if current_values is None:
+                        continue  # Skip iteration if data extraction fails
 
                     response_counter += 1
 
                     # Initialize session and detector if not already done
                     if response_counter == 1 and not sitting_session:
+                        session_start = time.time()
                         sitting_session, sitting_session_id = initialize_session(
                             acc_token, db
                         )
@@ -146,13 +155,15 @@ async def landmark_results(
                             )
                             logger.info("Initialization success message sent")
                     else:
-                        session_start = time.time()
                         detector.detect(current_values, object_data.get("faceDetect"))
 
-                    # Send the status of all topics in every loop iteration
-                    await websocket.send_json(
-                        {"type": "all_topic_alerts", "data": prepare_alert(detector)}
-                    )
+                    if response_counter % 3 == 0:
+                        await websocket.send_json(
+                            {
+                                "type": "all_topic_alerts",
+                                "data": prepare_alert(detector),
+                            }
+                        )
 
                     # Handle and send alerts based on thresholds and cooldowns
                     triggered_alerts = handle_alerts(
@@ -172,10 +183,11 @@ async def landmark_results(
                     logger.warning("Unexpected message format, missing 'data' key.")
 
             except WebSocketDisconnect:
+                if session_start:
+                    session_end = time.time()
+                    session_duration = session_end - session_start
+                    logger.info(f"Session Duration: {session_duration} seconds")
                 end_sitting_session(sitting_session, db)
-                session_end = time.time()
-                session_duration = session_end - session_start
-                print(session_duration)
                 logger.info("WebSocket disconnected")
                 break  # Exit loop to clean up resources on disconnect
 
@@ -190,7 +202,7 @@ async def landmark_results(
 
 
 def initialize_session(acc_token, db):
-    """Initialize the detection object and create a new sitting session."""
+    """Initialize a new sitting session."""
     try:
         sitting_session_id = uuid.uuid4()
         user_id = get_sub_from_token(acc_token)
@@ -215,10 +227,7 @@ def initialize_session(acc_token, db):
 
     except (IntegrityError, SQLAlchemyError) as e:
         db.rollback()
-        error_type = (
-            "Integrity error" if isinstance(e, IntegrityError) else "SQLAlchemy error"
-        )
-        logger.error(f"{error_type}: {e}")
+        logger.error(f"Database error while creating session: {e}")
         raise HTTPException(
             status_code=400 if isinstance(e, IntegrityError) else 500,
             detail=f"Error creating session: {e}",
@@ -226,7 +235,7 @@ def initialize_session(acc_token, db):
 
 
 def extract_current_values(processed_data):
-    """Extract the necessary current values from processed data."""
+    """Extract necessary current values from processed data."""
     try:
         return {
             "shoulderPosition": processed_data.get_shoulder_position(),
@@ -244,10 +253,10 @@ def prepare_alert(detector):
     """Prepare a combined alert dictionary based on the detector's results."""
     alert = detector.get_alert()
     return {
-        "blink": alert.get("blink_alert"),
-        "sitting": alert.get("sitting_alert"),
-        "distance": alert.get("distance_alert"),
-        "thoracic": alert.get("thoracic_alert"),
+        "blink": alert.get("blink_alert", False),
+        "sitting": alert.get("sitting_alert", False),
+        "distance": alert.get("distance_alert", False),
+        "thoracic": alert.get("thoracic_alert", False),
     }
 
 
@@ -287,12 +296,14 @@ def update_sitting_session(detector, duration, sitting_session, db):
 
 
 def end_sitting_session(sitting_session, db):
+    """Mark the sitting session as complete."""
     try:
-        sitting_session.is_complete = True
-        db.commit()
+        if sitting_session:
+            sitting_session.is_complete = True
+            db.commit()
     except SQLAlchemyError as e:
         db.rollback()
-        logger.error(f"Error updating sitting session: {e}")
+        logger.error(f"Error ending sitting session: {e}")
 
 
 def update_video_session(video_name, thumbnail, sitting_session, db):
@@ -309,11 +320,11 @@ def update_video_session(video_name, thumbnail, sitting_session, db):
 def should_send_alert(
     detector, alert_type, last_alert_time, cooldown_period, alert_duration_threshold
 ):
-    """Determines whether to send an alert based on the posture detection results."""
+    """Determines whether to send an alert based on detection results."""
     current_time = get_current_time()
 
     # Cooldown check
-    if last_alert_time and current_time - last_alert_time < cooldown_period:
+    if last_alert_time and (current_time - last_alert_time) < cooldown_period:
         return False
 
     # Check if the specific alert has persisted long enough
