@@ -146,30 +146,43 @@ def get_user_summary(
 
 @user_router.get("/history", response_model=List[SittingSessionResponse])
 def get_user_history(
-    db: Session = Depends(get_db), current_user=Depends(get_current_user)
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+    date_asc: bool = False,
+    stream: bool = False,
+    video: bool = False,
 ):
     user_id = current_user["user_id"]
-    all_user_sessions = (
-        db.query(SittingSession)
-        .filter(SittingSession.user_id == user_id)
-        .order_by(desc(SittingSession.date))
-        .all()
-    )
+    query = db.query(SittingSession).filter(SittingSession.user_id == user_id)
+
+    # Order by date based on `date_asc` flag
+    if date_asc:
+        query = query.order_by(SittingSession.date.asc())
+    else:
+        query = query.order_by(SittingSession.date.desc())
+
+    # Filter by session type if `stream` or `video` is true
+    if stream or video:
+        session_types = []
+        if stream:
+            session_types.append("stream")  # Assuming "stream" is the type value
+        if video:
+            session_types.append("video")  # Assuming "video" is the type value
+        query = query.filter(SittingSession.session_type.in_(session_types))
+
+    all_user_sessions = query.all()
 
     # Prepare response data
-    response_data = []
-    for session in all_user_sessions:
-        response_data.append(
-            {
-                "sitting_session_id": str(
-                    session.sitting_session_id
-                ),  # Convert UUID to string
-                "file_name": str(session.file_name),
-                "thumbnail": str(session.thumbnail),  # Convert UUID to string
-                "date": (str(session.date)),  # Convert datetime to string
-                "session_type": session.session_type,
-            }
-        )
+    response_data = [
+        {
+            "sitting_session_id": str(session.sitting_session_id),
+            "file_name": session.file_name,
+            "thumbnail": session.thumbnail,
+            "date": session.date.isoformat(),  # Use `isoformat()` for standardized formatting
+            "session_type": session.session_type,
+        }
+        for session in all_user_sessions
+    ]
 
     return JSONResponse(content=response_data)
 
