@@ -15,7 +15,7 @@ class detection:
         self.correct_values = {}
         self.ear_below_threshold = False
         self.blink_detected = False
-
+        self.real_distance = None
         self.latest_nearest_distance = 0
         self.blink_stack = 0
         self.sitting_stack = 0
@@ -118,14 +118,16 @@ class detection:
                             self.distance_stack = 0
                 else:
                     if self.latest_nearest_distance:
-                        real_distance = (
-                            self.focal_length
-                            * (self.latest_nearest_distance * self.iris_diameter)
-                            / 10
+                        self.real_distance = round(
+                            (
+                                (self.focal_length * self.iris_diameter)
+                                / (self.latest_nearest_distance)
+                            )
+                            / 1000
                         )
-                        print(real_distance)
-                        # print ตรงนี้ real_distance
-                        if real_distance > 40:  # 40 cm
+                        print("Calculated real_distance:", self.real_distance)
+
+                        if self.real_distance > 40:  # 40 cm
                             self.distance_stack += 1
                         else:
                             self.distance_stack = 0
