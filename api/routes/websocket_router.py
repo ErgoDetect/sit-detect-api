@@ -112,6 +112,15 @@ async def landmark_results(
             logger.warning(f"Error receiving focal length data: {e}")
 
     # Initialize variables outside the loop
+    if focal_length_enabled:
+        detector = (
+            detection(frame_per_second=15, focal_length=focal_length_values)
+            if stream
+            else None
+        )
+    else:
+        detector = detection(frame_per_second=15) if stream else None
+
     session_start = None
     sitting_session = None
     sitting_session_id = None

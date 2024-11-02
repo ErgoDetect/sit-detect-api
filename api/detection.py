@@ -7,6 +7,7 @@ class detection:
         self.ear_threshold_high = 0.5
         self.focal_length = focal_length
         self.iris_diameter = 1.17  # cm
+        self.thoracic_threshold = 0.05
 
         # Initialization of variables
         self.response_counter = 0
@@ -61,6 +62,11 @@ class detection:
                 ),
                 "diameterLeft": average([v["diameterLeft"] for v in self.saved_values]),
             }
+            if (
+                self.correct_values["shoulderPosition"] + self.thoracic_threshold
+                >= 0.95
+            ):
+                self.correct_values["shoulderPosition"] = 0.95 - self.thoracic_threshold
 
     def detect(self, input, faceDetect):
         self.response_counter += 1
@@ -69,7 +75,7 @@ class detection:
                 self.thoracic_stack = 0
             elif (
                 self.correct_values.get("shoulderPosition") is not None
-                and self.correct_values["shoulderPosition"] + 0.05
+                and self.correct_values["shoulderPosition"] + self.thoracic_threshold
                 <= input["shoulderPosition"]
             ):
                 self.thoracic_stack += 1
@@ -104,19 +110,7 @@ class detection:
                     correct_diameter_right or 0, correct_diameter_left or 0
                 )
 
-                print("diameterRight:", diameter_right)
-                print("diameterLeft:", diameter_left)
-                print("latest_nearest_distance:", self.latest_nearest_distance)
-
-                real_distance = (
-                    self.focal_length
-                    * (self.latest_nearest_distance * self.iris_diameter)
-                    / 10
-                )
-
-                print("Calculated real_distance:", real_distance)
-
-                if self.focal_length != 0:
+                if self.focal_length == 0:
                     if self.correct_distance and self.latest_nearest_distance:
                         if self.correct_distance * 1.10 <= self.latest_nearest_distance:
                             self.distance_stack += 1
