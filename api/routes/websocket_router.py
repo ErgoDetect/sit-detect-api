@@ -51,12 +51,13 @@ async def receive_video_name(
     current_user: dict = Depends(get_current_user),
 ):
     try:
-        # Get video name and thumbnail from request
         video_name = request.video_name
         thumbnail = request.thumbnail
-        user_id = current_user["user_id"]
+        user_id = current_user.get("user_id")
 
-        # Find the most recent sitting session for the user
+        if not user_id:
+            raise HTTPException(status_code=400, detail="Invalid user data")
+
         sitting_session = (
             db.query(SittingSession)
             .filter(SittingSession.user_id == user_id)
@@ -66,12 +67,14 @@ async def receive_video_name(
         if not sitting_session:
             raise HTTPException(status_code=404, detail="Sitting session not found")
 
-        # Update video session in the database
         update_video_session(video_name, thumbnail, sitting_session, db)
         return {"message": "Video session updated successfully"}
 
+    except SQLAlchemyError as e:
+        logger.error(f"Database error while updating video session: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
     except Exception as e:
-        logger.error(f"Error updating video session: {e}")
+        logger.error(f"Unexpected error updating video session: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -84,42 +87,37 @@ async def landmark_results(
 ):
     await websocket.accept()
     acc_token = websocket.cookies.get("access_token")
+
+    if not acc_token:
+        logger.error("Access token missing in WebSocket cookies.")
+        await websocket.close(code=4003, reason="Access token missing")
+        return
+
     logger.info("WebSocket connection accepted")
 
     focal_length_values = None
     set_focal_length = False
     detector = None
 
-    # Process initial focal length data if enabled
     if focal_length_enabled and not set_focal_length:
         try:
             init_message = await websocket.receive_text()
             init_data = json.loads(init_message)
             focal_length_data = init_data.get("focal_length")
             if focal_length_data:
-                calibration_data = focal_length_data.get("calibration_data")
-                if calibration_data:
-                    camera_matrix = calibration_data.get("cameraMatrix")
-                    if camera_matrix:
-                        fx = camera_matrix[0][0]  # Focal length in the x-direction
-                        fy = camera_matrix[1][1]  # Focal length in the y-direction
-                        focal_length_values = (fx + fy) / 2  # Average focal length
-                        detector = detection(
-                            frame_per_second=15, focal_length=focal_length_values
-                        )
-                        set_focal_length = True
+                camera_matrix = focal_length_data.get("cameraMatrix")
+                if camera_matrix:
+                    fx = camera_matrix[0][0]
+                    fy = camera_matrix[1][1]
+                    focal_length_values = (fx + fy) / 2
+                    detector = detection(
+                        frame_per_second=15, focal_length=focal_length_values
+                    )
+                    set_focal_length = True
+        except json.JSONDecodeError:
+            logger.warning("Error decoding initial message JSON")
         except Exception as e:
             logger.warning(f"Error receiving focal length data: {e}")
-
-    # Initialize variables outside the loop
-    if focal_length_enabled:
-        detector = (
-            detection(frame_per_second=15, focal_length=focal_length_values)
-            if stream
-            else None
-        )
-    else:
-        detector = detection(frame_per_second=15) if stream else None
 
     session_start = None
     sitting_session = None
@@ -132,7 +130,6 @@ async def landmark_results(
 
         while stream:
             try:
-                # Receive and process streaming messages
                 message = await websocket.receive_text()
                 message_data = json.loads(message)
 
@@ -141,18 +138,16 @@ async def landmark_results(
                     processed_data = processData(object_data)
                     current_values = extract_current_values(processed_data)
                     if current_values is None:
-                        continue  # Skip iteration if data extraction fails
+                        continue
 
                     response_counter += 1
 
-                    # Initialize session and detector if not already done
                     if response_counter == 1 and not sitting_session:
                         session_start = time.time()
                         sitting_session, sitting_session_id = initialize_session(
                             acc_token, db
                         )
 
-                    # Set baseline values for the first 15 frames
                     if response_counter <= 15:
                         detector.set_correct_value(current_values)
                         if response_counter == 15:
@@ -174,7 +169,6 @@ async def landmark_results(
                             }
                         )
 
-                    # Handle and send alerts based on thresholds and cooldowns
                     triggered_alerts = handle_alerts(
                         detector, last_alert_time, cooldown_periods, alert_thresholds
                     )
@@ -183,7 +177,6 @@ async def landmark_results(
                             {"type": "triggered_alerts", "data": triggered_alerts}
                         )
 
-                    # Periodically update the database session
                     if response_counter % 5 == 0:
                         update_sitting_session(detector, sitting_session, db)
                 else:
@@ -194,9 +187,11 @@ async def landmark_results(
                     session_end = time.time()
                     session_duration = session_end - session_start
                     logger.info(f"Session Duration: {session_duration} seconds")
+                else:
+                    session_duration = 0
                 end_sitting_session(sitting_session, session_duration, db)
                 logger.info("WebSocket disconnected")
-                break  # Exit loop to clean up resources on disconnect
+                break
 
             except Exception as e:
                 logger.error(f"Error in WebSocket connection: {e}")
@@ -204,7 +199,6 @@ async def landmark_results(
                     if websocket.client_state == WebSocketState.CONNECTED:
                         await websocket.close(code=4001)
                 else:
-                    # Handle other exceptions with a general close code
                     if websocket.client_state == WebSocketState.CONNECTED:
                         await websocket.close(
                             code=1000, reason="Unexpected server error"
@@ -214,7 +208,6 @@ async def landmark_results(
 
 
 def initialize_session(acc_token, db):
-    """Initialize a new sitting session."""
     try:
         sitting_session_id = uuid.uuid4()
         user_id = get_sub_from_token(acc_token)
@@ -235,7 +228,7 @@ def initialize_session(acc_token, db):
 
         db.add(db_sitting_session)
         db.commit()
-        return db_sitting_session, sitting_session_id  # Return both session and ID
+        return db_sitting_session, sitting_session_id
 
     except (IntegrityError, SQLAlchemyError) as e:
         db.rollback()
@@ -247,7 +240,6 @@ def initialize_session(acc_token, db):
 
 
 def extract_current_values(processed_data):
-    """Extract necessary current values from processed data."""
     try:
         return {
             "shoulderPosition": processed_data.get_shoulder_position(),
