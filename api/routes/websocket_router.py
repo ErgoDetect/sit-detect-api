@@ -107,8 +107,8 @@ async def landmark_results(
             if focal_length_data:
                 camera_matrix = focal_length_data.get("cameraMatrix")
                 if camera_matrix:
-                    fx = camera_matrix[0][0]
-                    fy = camera_matrix[1][1]
+                    fx = round(camera_matrix[0][0], 2)
+                    fy = round(camera_matrix[1][1], 2)
                     focal_length_values = (fx + fy) / 2
                     detector = detection(
                         frame_per_second=15, focal_length=focal_length_values
