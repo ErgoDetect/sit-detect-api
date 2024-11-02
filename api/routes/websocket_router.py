@@ -97,11 +97,15 @@ async def landmark_results(
     logger.info("WebSocket connection accepted")
 
     # Initialize variables outside the loop
-    detector = (
-        detection(frame_per_second=15, focal_length=focal_length_value)
-        if stream
-        else None
-    )
+    if focal_length_enabled:
+        detector = (
+            detection(frame_per_second=15, focal_length=focal_length_value)
+            if stream
+            else None
+        )
+    else:
+        detector = detection(frame_per_second=15) if stream else None
+
     sitting_session = None
     sitting_session_id = None
     response_counter = 0
