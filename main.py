@@ -10,6 +10,7 @@ from api.routes.auth_router import auth_router
 from api.routes.google_router import google_router
 from api.routes.user_router import user_router
 from api.routes.websocket_router import websocket_router
+from api.routes.delete_router import delete_router
 from database.database import engine
 import database.model as model
 
@@ -75,6 +76,7 @@ app.include_router(user_router, prefix="/user", tags=["User"])
 app.include_router(google_router, prefix="/auth/google", tags=["Google OAuth"])
 app.include_router(websocket_router, prefix="/landmark", tags=["WebSocket"])
 app.include_router(files_router, prefix="/files", tags=["Files"])
+app.include_router(delete_router, prefix="/delete", tags=["Delete"])
 
 
 @app.get("/")

@@ -77,37 +77,6 @@ def verify_user_mail(token: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Unexpected internal error")
 
 
-@user_router.delete("/delete", status_code=status.HTTP_200_OK)
-def delete_user_db(
-    db: Session = Depends(get_db), current_user=Depends(get_current_user)
-):
-    """
-    Delete the currently authenticated user from the database.
-    """
-    try:
-        # Delete all user sessions for the current user
-        delete_user_sessions(db, current_user.email)
-
-        # Delete the user itself
-        delete_user(db, current_user.email)
-
-        return {"message": "User and all sessions deleted successfully"}
-
-    except NoResultFound:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-        )
-
-    except SQLAlchemyError as e:
-        logger.error(f"Database error when deleting user: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error",
-        )
-
-    # Add other fields from the SittingSession model except for user_id
-
-
 @user_router.get("/summary", response_model=SessionSummary)
 def get_user_summary(
     session_id: str,
