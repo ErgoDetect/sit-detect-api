@@ -119,6 +119,15 @@ async def landmark_results(
         except Exception as e:
             logger.warning(f"Error receiving focal length data: {e}")
 
+    if focal_length_enabled:
+        detector = (
+            detection(frame_per_second=15, focal_length=focal_length_values)
+            if stream
+            else None
+        )
+    else:
+        detector = detection(frame_per_second=15) if stream else None
+
     session_start = None
     sitting_session = None
     sitting_session_id = None
@@ -178,18 +187,21 @@ async def landmark_results(
                         )
 
                     if response_counter % 5 == 0:
-                        update_sitting_session(detector, sitting_session, db)
+                        update_sitting_session(
+                            detector, response_counter, sitting_session, db
+                        )
                 else:
                     logger.warning("Unexpected message format, missing 'data' key.")
 
             except WebSocketDisconnect:
                 if session_start:
-                    session_end = time.time()
-                    session_duration = session_end - session_start
-                    logger.info(f"Session Duration: {session_duration} seconds")
+                    # session_end = time.time()
+                    # session_duration = session_end - session_start
+                    logger.info(f"Session Duration: {response_counter} seconds")
                 else:
-                    session_duration = 0
-                end_sitting_session(sitting_session, session_duration, db)
+                    # session_duration = 0
+                    response_counter = 0
+                end_sitting_session(sitting_session, response_counter, db)
                 logger.info("WebSocket disconnected")
                 break
 
@@ -284,7 +296,7 @@ def handle_alerts(detector, last_alert_time, cooldown_periods, alert_thresholds)
     return triggered_alerts
 
 
-def update_sitting_session(detector, sitting_session, db):
+def update_sitting_session(detector, duration, sitting_session, db):
     """Update the sitting session in the database with detector timeline results."""
     try:
         timeline_result = detector.get_timeline_result()
@@ -292,6 +304,7 @@ def update_sitting_session(detector, sitting_session, db):
         sitting_session.sitting = timeline_result["sitting"]
         sitting_session.distance = timeline_result["distance"]
         sitting_session.thoracic = timeline_result["thoracic"]
+        sitting_session.duration = duration
         db.commit()
     except SQLAlchemyError as e:
         db.rollback()
