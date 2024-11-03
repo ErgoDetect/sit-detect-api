@@ -121,6 +121,8 @@ async def landmark_results(
             logger.error(f"Error setting up focal length: {e}")
             await websocket.close(code=1011, reason="Failed to initialize")
             return
+    else:
+        detector = detection(frame_per_second=15) if stream else None
 
     session_start = None
     sitting_session = None
