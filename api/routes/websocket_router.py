@@ -27,18 +27,11 @@ logger = logging.getLogger(__name__)
 websocket_router = APIRouter()
 
 # Define alert types and their cooldown and threshold times
-ALERT_TYPES = ["blink", "sitting", "distance", "thoracic"]
+# ALERT_TYPES = ["blink", "sitting", "distance", "thoracic"]
 
 cooldown_periods = {
-    "blink": timedelta(minutes=2),
-    "sitting": timedelta(minutes=30),
-    "distance": timedelta(minutes=10),
-    "thoracic": timedelta(minutes=10),
-}
-
-alert_thresholds = {
-    "blink": timedelta(seconds=10),
-    "sitting": timedelta(minutes=2),
+    "blink": timedelta(minutes=1),
+    "sitting": timedelta(minutes=1),
     "distance": timedelta(minutes=1),
     "thoracic": timedelta(minutes=1),
 }
@@ -95,7 +88,6 @@ async def landmark_results(
 
     detector = None
     focal_length_values = None
-
     if focal_length_enabled:
         try:
             init_message = await websocket.receive_text()
@@ -128,7 +120,10 @@ async def landmark_results(
     sitting_session = None
     sitting_session_id = None
     response_counter = 0
-    last_alert_time = {alert_type: None for alert_type in ALERT_TYPES}
+    # last_alert_time = {alert_type: None for alert_type in ALERT_TYPES}
+    send_alert_time_track = {
+        i: {"send": False, "last_time": None} for i in cooldown_periods
+    }
 
     try:
         while stream:
@@ -171,13 +166,21 @@ async def landmark_results(
                             }
                         )
 
-                    triggered_alerts = handle_alerts(
-                        detector, last_alert_time, cooldown_periods, alert_thresholds
+                    # triggered_alerts = handle_alerts(
+                    #     detector, last_alert_time, cooldown_periods, alert_thresholds
+                    # )
+                    triggered_alerts = should_send_alert(
+                        detector.get_alert(), cooldown_periods, send_alert_time_track
                     )
+
+                    # ใช้ตัวนี้เพื่อ trigger
                     if triggered_alerts:
                         await websocket.send_json(
                             {"type": "triggered_alerts", "data": triggered_alerts}
                         )
+                    # await websocket.send_json(
+                    #     {"type": "triggered_alerts", "data": triggered_alerts}
+                    # )
 
                     if response_counter % 5 == 0:
                         update_sitting_session(
@@ -264,24 +267,24 @@ def prepare_alert(detector):
     }
 
 
-def handle_alerts(detector, last_alert_time, cooldown_periods, alert_thresholds):
-    """Handle alerts and check if they meet thresholds and cooldowns."""
-    triggered_alerts = {}
-    current_time = get_current_time()
+# def handle_alerts(detector, last_alert_time, cooldown_periods, alert_thresholds):
+#     """Handle alerts and check if they meet thresholds and cooldowns."""
+#     triggered_alerts = {}
+#     current_time = get_current_time()
 
-    for alert_type in ALERT_TYPES:
-        if should_send_alert(
-            detector=detector,
-            alert_type=alert_type,
-            last_alert_time=last_alert_time[alert_type],
-            cooldown_period=cooldown_periods[alert_type],
-            alert_duration_threshold=alert_thresholds[alert_type],
-        ):
-            triggered_alerts[alert_type] = True
-            last_alert_time[alert_type] = current_time
-            logger.info(f"Prepared {alert_type} alert at {current_time}")
+#     for alert_type in ALERT_TYPES:
+#         if should_send_alert(
+#             detector=detector,
+#             alert_type=alert_type,
+#             last_alert_time=last_alert_time[alert_type],
+#             cooldown_period=cooldown_periods[alert_type],
+#             alert_duration_threshold=alert_thresholds[alert_type],
+#         ):
+#             triggered_alerts[alert_type] = True
+#             last_alert_time[alert_type] = current_time
+#             logger.info(f"Prepared {alert_type} alert at {current_time}")
 
-    return triggered_alerts
+#     return triggered_alerts
 
 
 def update_sitting_session(detector, duration, sitting_session, db):
@@ -322,22 +325,44 @@ def update_video_session(video_name, thumbnail, sitting_session, db):
         logger.error(f"Error updating video session: {e}")
 
 
-def should_send_alert(
-    detector, alert_type, last_alert_time, cooldown_period, alert_duration_threshold
-):
-    """Determines whether to send an alert based on detection results."""
+# def should_send_alert(
+#     detector, alert_type, last_alert_time, cooldown_period, alert_duration_threshold
+# ):
+#     """Determines whether to send an alert based on detection results."""
+#     current_time = get_current_time()
+
+#     # Cooldown check
+#     if last_alert_time and (current_time - last_alert_time) < cooldown_period:
+#         return False
+
+#     # Check if the specific alert has persisted long enough
+#     alert_timeline = detector.timeline_result.get(alert_type, [])
+#     if detector.result.get(f"{alert_type}_alert") and alert_timeline:
+#         last_issue_time = datetime.fromtimestamp(alert_timeline[-1][0]).replace(
+#             tzinfo=LOCAL_TZ
+#         )
+#         return current_time - last_issue_time > alert_duration_threshold
+
+#     return False
+
+
+def should_send_alert(alert, cooldown_periods, send_alert_time_track):
     current_time = get_current_time()
-
-    # Cooldown check
-    if last_alert_time and (current_time - last_alert_time) < cooldown_period:
-        return False
-
-    # Check if the specific alert has persisted long enough
-    alert_timeline = detector.timeline_result.get(alert_type, [])
-    if detector.result.get(f"{alert_type}_alert") and alert_timeline:
-        last_issue_time = datetime.fromtimestamp(alert_timeline[-1][0]).replace(
-            tzinfo=LOCAL_TZ
-        )
-        return current_time - last_issue_time > alert_duration_threshold
-
-    return False
+    alert_result = {}
+    for i in cooldown_periods:
+        if alert[i + "_alert"] and send_alert_time_track[i]["send"] is False:
+            send_alert_time_track[i]["send"] = True
+            send_alert_time_track[i]["last_time"] = current_time
+            alert_result[i] = True
+            print(i + ": alert")
+        elif alert[i + "_alert"] is False and send_alert_time_track[i]["send"]:
+            send_alert_time_track[i]["send"] = False
+            send_alert_time_track[i]["last_time"] = None
+            print(i + ": stop alert")
+        elif (alert[i + "_alert"] and send_alert_time_track[i]["send"]) and (
+            (send_alert_time_track[i]["last_time"] + cooldown_periods[i]) < current_time
+        ):
+            send_alert_time_track[i]["last_time"] = current_time
+            alert_result[i] = True
+            print(i + ": alert Again?")
+    return alert_result
