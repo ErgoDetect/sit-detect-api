@@ -117,7 +117,7 @@ async def sign_up(
             detail="Error during user creation",
         )
 
-    verify_mail_send_template(db, signup_data.email)
+    await verify_mail_send_template(db, signup_data.email)
     # try:
     #     new_user_id = get_user_by_email(db, signup_data.email, "email")
     #     generated_verify_token = create_verify_token({"sub": signup_data.email})
@@ -184,7 +184,7 @@ async def resend_verification(
             status_code=404, detail="User not found or already verified"
         )
 
-    verify_mail_send_template(db, request_data.email)
+    await verify_mail_send_template(db, request_data.email)
 
     # # Invalidate old token and generate a new one
     # new_token = create_verify_token({"sub": request_data.email})
