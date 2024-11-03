@@ -11,24 +11,32 @@ from fastapi import (
     Response,
     status,
 )
-from fastapi_mail import MessageSchema, MessageType
 from sqlalchemy.orm import Session
 from api.request_user import get_current_user
-from auth.mail.mail_config import load_email_template, send_verification_email
+from auth.mail.mail_config import (
+    verify_mail_send_template,
+)
 from auth.token import (
     check_token,
-    create_verify_token,
     generate_and_set_tokens,
     get_current_time,
     verify_token,
 )
-from database.crud import delete_user_sessions, get_user_by_email, create_user
+from database.crud import (
+    delete_user_sessions,
+    get_user_by_email,
+    create_user,
+)
 from database.database import get_db
 from database.model import User, UserSession
-from database.schemas.Auth import LoginResponse, SignUpRequest, LoginRequest
+from database.schemas.Auth import (
+    LoginResponse,
+    ResendVerificationRequest,
+    SignUpRequest,
+    LoginRequest,
+)
 from auth.auth import authenticate_user
 
-import os
 
 logger = logging.getLogger(__name__)
 auth_router = APIRouter()
@@ -88,7 +96,10 @@ async def sign_up(
     db: Session = Depends(get_db),
 ):
     # Step 1: Check if the email is already registered
-    if get_user_by_email(db, email=signup_data.email, sign_up_method="email"):
+    existing_user = get_user_by_email(
+        db, email=signup_data.email, sign_up_method="email"
+    )
+    if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered"
         )
@@ -106,52 +117,124 @@ async def sign_up(
             detail="Error during user creation",
         )
 
-    # Step 3: Generate the verification token
-    try:
-        generated_verify_token = create_verify_token({"sub": signup_data.email})
-    except Exception as e:
-        logger.error(f"Error generating verification token: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error generating verification token",
-        )
+    verify_mail_send_template(db, signup_data.email)
+    # try:
+    #     new_user_id = get_user_by_email(db, signup_data.email, "email")
+    #     generated_verify_token = create_verify_token({"sub": signup_data.email})
+    #     verify_mail = db.query(VerifyMailToken).filter(
+    #         VerifyMailToken.user_id == new_user_id.user_id
+    #     )
+    #     verify_mail.verification_token = generated_verify_token
+    #     verify_mail.token_expiration = get_current_time() + timedelta(hours=24)
+    #     db.commit()
+    # except Exception as e:
+    #     db.rollback()
+    #     logger.error(f"Error generating verification token: {e}")
+    #     raise HTTPException(
+    #         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+    #         detail="Error generating verification token",
+    #     )
 
-    # Step 4: Prepare the verification email
-    verification_link = (
-        f"http://localhost:8000/user/verify/?token={generated_verify_token}"
-    )
+    # # Step 4: Prepare the verification email
+    # verification_link = (
+    #     f"http://localhost:8000/user/verify/?token={generated_verify_token}"
+    # )
+    # template_path = os.path.abspath(
+    #     os.path.join(
+    #         os.path.dirname(__file__), "..", "..", "auth", "mail", "template.html"
+    #     )
+    # )
 
-    template_path = os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__), "..", "..", "auth", "mail", "template.html"
-        )
-    )
+    # try:
+    #     html_content = load_email_template(template_path)
+    #     html_content = html_content.replace(
+    #         "{{ verification_link }}", verification_link
+    #     )
+    # except FileNotFoundError as e:
+    #     logger.error(f"Email template not found: {e}")
+    #     raise HTTPException(
+    #         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+    #         detail="Email template not found",
+    #     )
 
-    try:
-        # Load the email template and replace the placeholder with the actual verification link
-        html_content = load_email_template(template_path)
-        html_content = html_content.replace(
-            "{{ verification_link }}", verification_link
-        )
-    except FileNotFoundError as e:
-        logger.error(f"Email template not found: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Email template not found",
-        )
+    # # Prepare the message schema
+    # message = MessageSchema(
+    #     subject="Verify your Email",
+    #     recipients=[signup_data.email],
+    #     body=html_content,
+    #     subtype=MessageType.html,
+    # )
 
-    # Prepare the message schema
-    message = MessageSchema(
-        subject="Verify your Email",
-        recipients=[signup_data.email],
-        body=html_content,
-        subtype=MessageType.html,
-    )
-
-    # Step 5: Send the email in the background
-    background_tasks.add_task(send_verification_email, message)
+    # # Step 5: Send the email in the background
+    # background_tasks.add_task(send_verification_email, message)
 
     return {"message": "User created successfully, please verify your email."}
+
+
+@auth_router.post("/resend-verification", status_code=status.HTTP_200_OK)
+async def resend_verification(
+    request_data: ResendVerificationRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    user = get_user_by_email(db, email=request_data.email)
+
+    if not user or not user.verification_token:
+        raise HTTPException(
+            status_code=404, detail="User not found or already verified"
+        )
+
+    verify_mail_send_template(db, request_data.email)
+
+    # # Invalidate old token and generate a new one
+    # new_token = create_verify_token({"sub": request_data.email})
+    # verify_mail = db.query(VerifyMailToken).filter(
+    #     VerifyMailToken.user_id == user.user_id
+    # )
+    # verify_mail.verification_token = new_token
+    # verify_mail.token_expiration = get_current_time() + timedelta(hours=24)
+
+    # try:
+    #     db.commit()
+    # except Exception as e:
+    #     db.rollback()
+    #     logger.error(f"Error updating token: {e}")
+    #     raise HTTPException(
+    #         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+    #         detail="Could not update verification token",
+    #     )
+
+    # verification_link = f"http://localhost:8000/user/verify/?token={new_token }"
+    # template_path = os.path.abspath(
+    #     os.path.join(
+    #         os.path.dirname(__file__), "..", "..", "auth", "mail", "template.html"
+    #     )
+    # )
+
+    # try:
+    #     html_content = load_email_template(template_path)
+    #     html_content = html_content.replace(
+    #         "{{ verification_link }}", verification_link
+    #     )
+    # except FileNotFoundError as e:
+    #     logger.error(f"Email template not found: {e}")
+    #     raise HTTPException(
+    #         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+    #         detail="Email template not found",
+    #     )
+
+    # # Prepare the message schema
+    # message = MessageSchema(
+    #     subject="Verify your Email",
+    #     recipients=[request_data.email],
+    #     body=html_content,
+    #     subtype=MessageType.html,
+    # )
+
+    # # Step 5: Send the email in the background
+    # background_tasks.add_task(send_verification_email, message)
+
+    return {"message": "Verification email resent successfully."}
 
 
 @auth_router.post("/login", response_model=LoginResponse)
@@ -175,12 +258,10 @@ def login(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Device identifier missing"
         )
 
-    # Step 3: Invalidate old sessions for the device
     delete_user_sessions(db, user.user_id, device_identifier)
 
-    # Step 4: Create a new session and save it to the database
     session_id = str(uuid.uuid4())
-    current_time = get_current_time()  # Store to avoid redundant calls
+    current_time = get_current_time()
     new_session = UserSession(
         session_id=session_id,
         user_id=user.user_id,

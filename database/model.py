@@ -51,6 +51,16 @@ class GoogleUser(User):
     __mapper_args__ = {"polymorphic_identity": "google_user"}
 
 
+class VerifyMailToken(User):
+    __tablename__ = "verify_mail_token"
+
+    user_id = Column(String(21), ForeignKey("users.user_id"), primary_key=True)
+    verification_token = Column(String, nullable=True)
+    token_expiration = Column(DateTime, nullable=True)
+
+    __mapper_args__ = {"polymorphic_identity": "verify_user_token"}
+
+
 class OAuthState(Base):
     __tablename__ = "oauth_states"
 
