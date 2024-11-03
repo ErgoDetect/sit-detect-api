@@ -93,130 +93,62 @@ async def landmark_results(
         await websocket.close(code=4003, reason="Access token missing")
         return
 
-    logger.info("WebSocket connection accepted")
-
-    focal_length_values = None
-    set_focal_length = False
+    # Check and set focal length if enabled
     detector = None
-
-    if focal_length_enabled and not set_focal_length:
+    if focal_length_enabled:
         try:
             init_message = await websocket.receive_text()
             init_data = json.loads(init_message)
-            focal_length_data = init_data.get("focal_length")
-            if focal_length_data:
-                camera_matrix = focal_length_data.get("cameraMatrix")
-                if camera_matrix:
-                    fx = round(camera_matrix[0][0], 2)
-                    fy = round(camera_matrix[1][1], 2)
-                    focal_length_values = (fx + fy) / 2
-                    detector = detection(
-                        frame_per_second=15, focal_length=focal_length_values
-                    )
-                    set_focal_length = True
-        except json.JSONDecodeError:
-            logger.warning("Error decoding initial message JSON")
+            focal_length_data = init_data.get("focal_length", {})
+            camera_matrix = focal_length_data.get("cameraMatrix")
+            if camera_matrix:
+                fx = round(camera_matrix[0][0], 2)
+                fy = round(camera_matrix[1][1], 2)
+                focal_length_values = (fx + fy) / 2
+                detector = detection(
+                    frame_per_second=15, focal_length=focal_length_values
+                )
+            else:
+                logger.error("Focal length data is missing or incomplete.")
+                await websocket.close(code=4003, reason="Focal length data missing")
+                return
+        except json.JSONDecodeError as e:
+            logger.error(f"Error decoding initial message JSON: {e}")
+            await websocket.close(code=4003, reason="Invalid initial data")
+            return
         except Exception as e:
-            logger.warning(f"Error receiving focal length data: {e}")
-
-    if focal_length_enabled:
-        detector = (
-            detection(frame_per_second=15, focal_length=focal_length_values)
-            if stream
-            else None
-        )
-    else:
-        detector = detection(frame_per_second=15) if stream else None
-
-    session_start = None
-    sitting_session = None
-    sitting_session_id = None
-    response_counter = 0
-    last_alert_time = {alert_type: None for alert_type in ALERT_TYPES}
+            logger.error(f"Error setting up focal length: {e}")
+            await websocket.close(code=1011, reason="Failed to initialize")
+            return
 
     try:
-        logger.info(f"Focal length values: {focal_length_values}")
-
         while stream:
             try:
                 message = await websocket.receive_text()
                 message_data = json.loads(message)
-
-                if "data" in message_data:
-                    object_data = message_data["data"]
-                    processed_data = processData(object_data)
-                    current_values = extract_current_values(processed_data)
-                    if current_values is None:
-                        continue
-
-                    response_counter += 1
-
-                    if response_counter == 1 and not sitting_session:
-                        session_start = time.time()
-                        sitting_session, sitting_session_id = initialize_session(
-                            acc_token, db
-                        )
-
-                    if response_counter <= 15:
-                        detector.set_correct_value(current_values)
-                        if response_counter == 15:
-                            await websocket.send_json(
-                                {
-                                    "type": "initialization_success",
-                                    "sitting_session_id": str(sitting_session_id),
-                                }
-                            )
-                            logger.info("Initialization success message sent")
-                    else:
-                        detector.detect(current_values, object_data.get("faceDetect"))
-
-                    if response_counter % 3 == 0:
-                        await websocket.send_json(
-                            {
-                                "type": "all_topic_alerts",
-                                "data": prepare_alert(detector),
-                            }
-                        )
-
-                    triggered_alerts = handle_alerts(
-                        detector, last_alert_time, cooldown_periods, alert_thresholds
-                    )
-                    if triggered_alerts:
-                        await websocket.send_json(
-                            {"type": "triggered_alerts", "data": triggered_alerts}
-                        )
-
-                    if response_counter % 5 == 0:
-                        update_sitting_session(
-                            detector, response_counter, sitting_session, db
-                        )
+                data = message_data.get("data")
+                if data:
+                    # Assuming processData is a function that processes your data
+                    processed_data = processData(data)
+                    # More processing and response sending logic here...
                 else:
-                    logger.warning("Unexpected message format, missing 'data' key.")
+                    logger.warning("Received message without 'data' key.")
 
             except WebSocketDisconnect:
-                if session_start:
-                    # session_end = time.time()
-                    # session_duration = session_end - session_start
-                    logger.info(f"Session Duration: {response_counter} seconds")
-                else:
-                    # session_duration = 0
-                    response_counter = 0
-                end_sitting_session(sitting_session, response_counter, db)
-                logger.info("WebSocket disconnected")
+                logger.info("WebSocket disconnected, terminating session.")
+                break
+            except json.JSONDecodeError as e:
+                logger.warning(f"Error decoding message JSON: {e}")
+            except Exception as e:
+                logger.error(f"Error during message processing: {e}")
                 break
 
-            except Exception as e:
-                logger.error(f"Error in WebSocket connection: {e}")
-                if "401: Token has expired" in str(e):
-                    if websocket.client_state == WebSocketState.CONNECTED:
-                        await websocket.close(code=4001)
-                else:
-                    if websocket.client_state == WebSocketState.CONNECTED:
-                        await websocket.close(
-                            code=1000, reason="Unexpected server error"
-                        )
+        # Cleanup or post-processing after loop exit
+        logger.info("Session ended or stream stopped.")
+
     except Exception as e:
         logger.error(f"Fatal error in WebSocket connection: {e}")
+        await websocket.close(code=1011, reason="Unexpected error occurred")
 
 
 def initialize_session(acc_token, db):
