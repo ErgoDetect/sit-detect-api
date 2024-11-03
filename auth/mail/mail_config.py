@@ -1,6 +1,6 @@
 from datetime import timedelta
 from fastapi import BackgroundTasks, HTTPException, status
-from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
+from fastapi_mail import ConnectionConfig, FastMail, MessageSchema
 from pydantic import BaseModel, EmailStr
 from typing import List
 import os
@@ -60,8 +60,10 @@ async def send_verification_email(message: MessageSchema):
         fm = FastMail(CONF)
         await fm.send_message(message)
     except Exception as e:
+        logger.error(f"Failed to send verification email: {e}")
         raise HTTPException(
-            status_code=500, detail=f"Failed to send verification email: {str(e)}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to send verification email: {str(e)}",
         )
 
 
@@ -79,19 +81,45 @@ def load_email_template(template_path: str) -> str:
         return file.read()
 
 
-async def verify_mail_send_template(db: Session, receiver: EmailStr):
+async def verify_mail_send_template(
+    db: Session, background_tasks: BackgroundTasks, receiver: str
+):
     try:
-        user = get_user_by_email(db, receiver, "email")
+        user = get_user_by_email(db, email=receiver, sign_up_method="email")
+        if not user:
+            logging.error(f"No user found with email: {receiver}")
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Create a new token every time
         verify_token = create_verify_token({"sub": receiver})
-        verify_mail = db.query(VerifyMailToken).filter(
-            VerifyMailToken.user_id == user.user_id
+        current_time = get_current_time()
+        token_expiration = current_time + timedelta(hours=24)
+
+        # Check if a token already exists, and update or create accordingly
+        verify_mail = (
+            db.query(VerifyMailToken)
+            .filter(VerifyMailToken.user_id == user.user_id)
+            .first()
         )
-        verify_mail.verification_token = verify_token
-        verify_mail.token_expiration = get_current_time() + timedelta(hours=24)
+
+        if verify_mail:
+            # Invalidate the old token
+            verify_mail.verification_token = verify_token
+            verify_mail.token_expiration = token_expiration
+        else:
+            # Create a new token
+            verify_mail = VerifyMailToken(
+                user_id=user.user_id,
+                verification_token=verify_token,
+                token_expiration=token_expiration,
+            )
+            db.add(verify_mail)
+
         db.commit()
+
     except Exception as e:
         db.rollback()
-        logger.error(f"Error generating verification token: {e}")
+        logging.error(f"Error generating verification token: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error generating verification token",
@@ -110,19 +138,18 @@ async def verify_mail_send_template(db: Session, receiver: EmailStr):
             "{{ verification_link }}", verification_link
         )
     except FileNotFoundError as e:
-        logger.error(f"Email template not found: {e}")
+        logger.error(f"Email template not found at {template_path}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Email template not found",
         )
 
-    # Prepare the message schema
+    # Prepare and send the email
     message = MessageSchema(
         subject="Verify your Email",
         recipients=[receiver],
         body=html_content,
-        subtype=MessageType.html,
+        subtype="html",
     )
 
-    # Step 5: Send the email in the background
-    BackgroundTasks.add_task(send_verification_email, message)
+    background_tasks.add_task(send_verification_email, message)

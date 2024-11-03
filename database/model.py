@@ -30,6 +30,13 @@ class User(Base):
         "UserSession", back_populates="user", cascade="all, delete-orphan"
     )
 
+    verify_token = relationship(
+        "VerifyMailToken",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
     __mapper_args__ = {"polymorphic_on": type, "polymorphic_identity": "user"}
 
 
@@ -51,14 +58,14 @@ class GoogleUser(User):
     __mapper_args__ = {"polymorphic_identity": "google_user"}
 
 
-class VerifyMailToken(User):
-    __tablename__ = "verify_mail_token"
+class VerifyMailToken(Base):
+    __tablename__ = "verify_mail_tokens"  # Good practice to use plural for table names
 
     user_id = Column(String(21), ForeignKey("users.user_id"), primary_key=True)
-    verification_token = Column(String, nullable=True)
-    token_expiration = Column(DateTime, nullable=True)
+    verification_token = Column(String, nullable=False)  # Shouldn't be nullable
+    token_expiration = Column(DateTime, nullable=False)  # Shouldn't be nullable
 
-    __mapper_args__ = {"polymorphic_identity": "verify_user_token"}
+    user = relationship("User", back_populates="verify_token")
 
 
 class OAuthState(Base):

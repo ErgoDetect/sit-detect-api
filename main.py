@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from fastapi.staticfiles import StaticFiles
 
 from api.routes.files_router import files_router
 from api.routes.auth_router import auth_router
@@ -77,6 +78,8 @@ app.include_router(google_router, prefix="/auth/google", tags=["Google OAuth"])
 app.include_router(websocket_router, prefix="/landmark", tags=["WebSocket"])
 app.include_router(files_router, prefix="/files", tags=["Files"])
 app.include_router(delete_router, prefix="/delete", tags=["Delete"])
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 @app.get("/")
