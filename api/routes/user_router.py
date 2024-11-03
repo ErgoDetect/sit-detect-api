@@ -2,16 +2,16 @@ import logging
 import os
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError, NoResultFound
 from api.request_user import get_current_user
 from auth.mail.mail_config import load_email_template
-from auth.token import check_token
+from auth.token import check_token, get_current_time
 from database.crud import delete_user, delete_user_sessions
 from database.database import get_db
-from database.model import SittingSession, User
+from database.model import SittingSession, User, VerifyMailToken
 from database.schemas.Response import SessionSummary
 from database.schemas.Response import SittingSessionResponse
 
@@ -19,41 +19,49 @@ user_router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@user_router.get("/verify", status_code=200, response_class=HTMLResponse)
+@user_router.get("/verify", status_code=302)
 def verify_user_mail(token: str, db: Session = Depends(get_db)):
     """
     Verify a user's email using the verification token.
     """
-    try:
-        token_data = check_token(token, "verify")
-        user_mail = token_data.get("user_id")
 
-        if not user_mail:
-            raise HTTPException(
-                status_code=400, detail="Invalid token: 'user_id' claim missing"
-            )
+    token_data = check_token(token, "verify")
+    user_mail = token_data.get("user_id")
 
-        # Query the user from the database
-        user = (
-            db.query(User)
-            .filter(User.email == user_mail, User.sign_up_method == "email")
-            .first()
+    if not user_mail:
+        raise HTTPException(
+            status_code=400, detail="Invalid token: 'user_id' claim missing"
         )
 
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+    # Query the user from the database
+    user = (
+        db.query(User)
+        .filter(User.email == user_mail, User.sign_up_method == "email")
+        .first()
+    )
 
-        # Mark the user as verified
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    verify_link_valid = (
+        db.query(VerifyMailToken)
+        .filter(
+            VerifyMailToken.user_id == user.user_id,
+            VerifyMailToken.verification_token == token,
+        )
+        .first()
+    )
+
+    if verify_link_valid:
         user.verified = True
-
         try:
             db.commit()
+            return RedirectResponse(url="ergodetect://login")
         except Exception as e:
-            logger.error(f"Error during commit: {e}")
-            db.rollback()  # Roll back in case of failure
+            db.rollback()
+            logging.error(f"Error during commit: {e}")
             raise HTTPException(status_code=500, detail="Error committing transaction")
-
-        # Load the success email template and return it
+    else:
         template_path = os.path.abspath(
             os.path.join(
                 os.path.dirname(__file__),
@@ -61,20 +69,15 @@ def verify_user_mail(token: str, db: Session = Depends(get_db)):
                 "..",
                 "auth",
                 "mail",
-                "success_verify.html",
+                "expire_link.html",
             )
         )
-
-        html_content = load_email_template(template_path)
-
-        return HTMLResponse(content=html_content, status_code=200)
-
-    except SQLAlchemyError as e:
-        logger.error(f"Database error during email verification: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-    except Exception as e:
-        logger.error(f"Unexpected error during email verification: {e}")
-        raise HTTPException(status_code=500, detail="Unexpected internal error")
+        try:
+            html_content = load_email_template(template_path)
+            return HTMLResponse(content=html_content, status_code=200)
+        except FileNotFoundError:
+            logging.error(f"Email template not found at {template_path}")
+            raise HTTPException(status_code=500, detail="Email template not found")
 
 
 @user_router.get("/summary", response_model=SessionSummary)

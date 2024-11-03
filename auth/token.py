@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 # Constants for JWT configuration
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
-VERIFY_TOKEN_EXPIRE_MINUTES = 5  # Verification token expiration time
+VERIFY_TOKEN_EXPIRE_HOURS = 24  # Verification token expiration time
 ACCESS_TOKEN_EXPIRE_MINUTES = 60  # Access token expiration time
 REFRESH_TOKEN_EXPIRE_DAYS = 365  # Refresh token expiration time
 
@@ -51,7 +51,7 @@ def create_verify_token(data: Dict[str, str]) -> str:
     """
     Create a verification token with a predefined expiration time (5 minutes).
     """
-    return create_token(data, timedelta(minutes=VERIFY_TOKEN_EXPIRE_MINUTES))
+    return create_token(data, timedelta(hours=VERIFY_TOKEN_EXPIRE_HOURS))
 
 
 def create_access_token(data: Dict[str, str]) -> str:

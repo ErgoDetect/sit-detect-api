@@ -16,3 +16,7 @@ class LoginResponse(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr
