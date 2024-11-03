@@ -214,10 +214,6 @@ async def logout(
     # Step 2: Delete user sessions based on the device identifier
     delete_user_sessions(db, current_user["user_id"], device_identifier)
 
-    user_id = current_user["user_id"]
-
-    login_method = db.query(User).filter(User.user_id == user_id).first().sign_up_method
-
     # Step 3: Clear authentication cookies
     response.delete_cookie(
         "access_token", httponly=False, path="/", samesite="none"
@@ -300,8 +296,9 @@ def refresh_access_token(
 
     generate_and_set_tokens(response, {"sub": user_id, "email": email})
     user_session = db.query(UserSession).filter_by(user_id=user_id).first()
-    user_session.created_at = get_current_time()
-    user_session.expires_at = get_current_time() + timedelta(hours=1)
-    db.commit()
+    if user_session:
+        user_session.created_at = get_current_time()
+        user_session.expires_at = get_current_time() + timedelta(hours=1)
+        db.commit()
 
     return {"message": "Access token refreshed successfully."}
