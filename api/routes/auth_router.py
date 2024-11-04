@@ -108,9 +108,7 @@ async def sign_up(
 
     # Step 2: Hash the password and create the user
     try:
-        create_user(
-            db, signup_data.email, signup_data.password, signup_data.display_name
-        )
+        create_user(db, signup_data.email, signup_data.password)
     except Exception as e:
         db.rollback()
         logger.error(f"Error creating user: {e}")
