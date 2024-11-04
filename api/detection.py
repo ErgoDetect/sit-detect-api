@@ -28,12 +28,13 @@ class detection:
         self.distance_stack_threshold = 30
         self.thoracic_stack_threshold = 2
         self.not_sitting_stack_threshold = 5
+        self.time_limit_exceed_alert_stack_threshold = 7200
         self.result = {
             "blink_alert": False,
             "sitting_alert": False,
             "distance_alert": False,
             "thoracic_alert": False,
-            "time_limit_exceed": False,
+            "time_limit_exceed_alert": False,
         }  # [blink_alert, sitting_alert, distance_alert, thoracic_alert]
 
         self.timeline_result = {
@@ -233,8 +234,11 @@ class detection:
                     ].append(self.response_counter)
                 self.result["thoracic_alert"] = False
 
-            if self.response_counter >= 7200 * self.frame_per_second:
-                self.result["time_limit_exceed"] = True
+            if (
+                self.response_counter
+                >= self.time_limit_exceed_alert_stack_threshold * self.frame_per_second
+            ):
+                self.result["time_limit_exceed_alert"] = True
 
     def get_timeline_result(self):
         return self.timeline_result

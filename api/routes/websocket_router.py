@@ -376,6 +376,7 @@ cooldown_periods = {
     "sitting": timedelta(minutes=1),
     "distance": timedelta(minutes=1),
     "thoracic": timedelta(minutes=1),
+    "time_limit_exceed": timedelta(minutes=1),
 }
 
 
