@@ -28,14 +28,16 @@ from database.crud import (
     create_user,
 )
 from database.database import get_db
-from database.model import User, UserSession, VerifyMailToken
+from database.model import EmailUser, User, UserSession, VerifyMailToken
 from database.schemas.Auth import (
     LoginResponse,
     ResendVerificationRequest,
+    ResetPassword,
     SignUpRequest,
     LoginRequest,
 )
 from auth.auth import authenticate_user
+from auth.auth_utils import hash_password
 
 
 logger = logging.getLogger(__name__)
@@ -118,7 +120,10 @@ async def sign_up(
         )
 
     await verify_mail_send_template(
-        db, background_tasks=background_tasks, receiver=signup_data.email
+        db,
+        background_tasks=background_tasks,
+        receiver=signup_data.email,
+        types="mail-verify",
     )
 
     return {"message": "User created successfully, please verify your email."}
@@ -143,7 +148,10 @@ async def resend_verification(
         )
 
     await verify_mail_send_template(
-        db, background_tasks=background_tasks, receiver=request_data.email
+        db,
+        background_tasks=background_tasks,
+        receiver=request_data.email,
+        types="mail-verify",
     )
 
     return {"message": "Verification email resent successfully."}
@@ -235,15 +243,19 @@ async def auth_status(request: Request, db: Session = Depends(get_db)):
     if not device_mac:
         return {"status": "LoginRequired", "message": "Device identifier is missing"}
 
-    # First, check the access token
+    # Helper function to check tokens
+    def check_token(token, token_type):
+        return handle_token_check(token, token_type, db, device_mac)
+
+    # Check access token first
     if access_token:
-        access_check = handle_token_check(access_token, "access", db, device_mac)
+        access_check = check_token(access_token, "access")
         if access_check["status"] == "Authenticated":
             return access_check
 
-        # If access token expired but refresh token is present
+        # Check refresh token if access token is expired
         if access_check["status"] == "Expired" and refresh_token:
-            refresh_check = handle_token_check(refresh_token, "refresh", db, device_mac)
+            refresh_check = check_token(refresh_token, "refresh")
             if refresh_check["status"] == "Authenticated":
                 return {
                     "status": "Refresh",
@@ -251,9 +263,9 @@ async def auth_status(request: Request, db: Session = Depends(get_db)):
                     "user_id": refresh_check["user_id"],
                 }
 
-    # If no valid access token, check the refresh token
+    # Check refresh token if no valid access token
     if refresh_token:
-        refresh_check = handle_token_check(refresh_token, "refresh", db, device_mac)
+        refresh_check = check_token(refresh_token, "refresh")
         if refresh_check["status"] == "Authenticated":
             return {
                 "status": "Refresh",
@@ -261,7 +273,7 @@ async def auth_status(request: Request, db: Session = Depends(get_db)):
                 "user_id": refresh_check["user_id"],
             }
 
-    # If no valid tokens or device mismatch, prompt login required
+    # Return login required if no valid tokens are found
     return {
         "status": "LoginRequired",
         "message": "No valid tokens found, or device mismatch. Please log in again.",
@@ -302,3 +314,44 @@ def refresh_access_token(
         db.commit()
 
     return {"message": "Access token refreshed successfully."}
+
+
+@auth_router.post("/request/reset-password")
+async def reset_password(
+    request: ResendVerificationRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+
+    await verify_mail_send_template(
+        db, background_tasks, receiver=request.email, types="reset-password"
+    )
+
+
+@auth_router.post("/reset-password")
+def reset_password(
+    request: ResetPassword,
+    db: Session = Depends(get_db),
+):
+    user = get_user_by_email(db, request.email, sign_up_method="email")
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    try:
+        user_info = (
+            db.query(EmailUser).filter(EmailUser.user_id == user.user_id).first()
+        )
+        if not user_info:
+            raise HTTPException(status_code=404, detail="User record not found")
+
+        hashed_password = hash_password(request.password)
+        user_info.password = hashed_password
+        db.commit()
+
+    except Exception as e:
+        db.rollback()
+        logging.error(f"Error resetting password: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error resetting password",
+        )

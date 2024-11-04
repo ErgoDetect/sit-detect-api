@@ -82,7 +82,7 @@ def load_email_template(template_path: str) -> str:
 
 
 async def verify_mail_send_template(
-    db: Session, background_tasks: BackgroundTasks, receiver: str
+    db: Session, background_tasks: BackgroundTasks, receiver: str, types: str
 ):
     try:
         user = get_user_by_email(db, email=receiver, sign_up_method="email")
@@ -90,31 +90,24 @@ async def verify_mail_send_template(
             logging.error(f"No user found with email: {receiver}")
             raise HTTPException(status_code=404, detail="User not found")
 
-        # Create a new token every time
+        # Create a new token and calculate expiration time
         verify_token = create_verify_token({"sub": receiver})
-        current_time = get_current_time()
-        token_expiration = current_time + timedelta(hours=24)
+        token_expiration = get_current_time() + timedelta(hours=24)
 
-        # Check if a token already exists, and update or create accordingly
-        verify_mail = (
-            db.query(VerifyMailToken)
-            .filter(VerifyMailToken.user_id == user.user_id)
-            .first()
-        )
+        # Check if a token already exists and update or create accordingly
+        verify_mail = db.query(VerifyMailToken).filter_by(user_id=user.user_id).first()
 
         if verify_mail:
-            # Invalidate the old token
             verify_mail.verification_token = verify_token
             verify_mail.token_expiration = token_expiration
         else:
-            # Create a new token
-            verify_mail = VerifyMailToken(
-                user_id=user.user_id,
-                verification_token=verify_token,
-                token_expiration=token_expiration,
+            db.add(
+                VerifyMailToken(
+                    user_id=user.user_id,
+                    verification_token=verify_token,
+                    token_expiration=token_expiration,
+                )
             )
-            db.add(verify_mail)
-
         db.commit()
 
     except Exception as e:
@@ -125,20 +118,26 @@ async def verify_mail_send_template(
             detail="Error generating verification token",
         )
 
-    verification_link = f"http://localhost:8000/user/verify/?token={verify_token}"
+    # Determine the template and verification link based on the type
+    template_file = "template.html" if types == "mail-verify" else "reset-password.html"
+    verification_link = (
+        f"http://localhost:8000/user/verify/?token={verify_token}"
+        if types == "mail-verify"
+        else f"http://localhost:8000/user/verify/reset-password?token={verify_token}"
+    )
+
     template_path = os.path.abspath(
         os.path.join(
-            os.path.dirname(__file__), "..", "..", "auth", "mail", "template.html"
+            os.path.dirname(__file__), "..", "..", "auth", "mail", template_file
         )
     )
 
     try:
-        html_content = load_email_template(template_path)
-        html_content = html_content.replace(
+        html_content = load_email_template(template_path).replace(
             "{{ verification_link }}", verification_link
         )
     except FileNotFoundError as e:
-        logger.error(f"Email template not found at {template_path}: {e}")
+        logging.error(f"Email template not found at {template_path}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Email template not found",

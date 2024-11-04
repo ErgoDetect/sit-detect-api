@@ -20,3 +20,8 @@ class LoginRequest(BaseModel):
 
 class ResendVerificationRequest(BaseModel):
     email: EmailStr
+
+
+class ResetPassword(BaseModel):
+    email: EmailStr
+    password: str
