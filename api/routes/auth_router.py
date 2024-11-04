@@ -37,7 +37,7 @@ from database.schemas.Auth import (
     LoginRequest,
 )
 from auth.auth import authenticate_user
-from auth.auth_utils import hash_password
+from auth.auth_utils import hash_password, verify_password
 
 
 logger = logging.getLogger(__name__)
@@ -344,14 +344,27 @@ def reset_password(
         if not user_info:
             raise HTTPException(status_code=404, detail="User record not found")
 
-        hashed_password = hash_password(request.password)
-        user_info.password = hashed_password
-        db.commit()
+        if verify_password(request.password, user_info.password):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="New password must be different from the old password",
+            )
+
+        else:
+            hashed_password = hash_password(request.password)
+            user_info.password = hashed_password
+            db.commit()
 
     except Exception as e:
         db.rollback()
         logging.error(f"Error resetting password: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error resetting password",
-        )
+        if verify_password(request.password, user_info.password):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="New password must be different from the old password",
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error resetting password",
+            )
