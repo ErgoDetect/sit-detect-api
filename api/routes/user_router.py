@@ -1,7 +1,7 @@
 import logging
 import os
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
@@ -19,14 +19,44 @@ user_router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+# Helper function to load email templates
+def load_expiration_template(template_filename: str):
+    template_path = os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__), "..", "..", "auth", "mail", template_filename
+        )
+    )
+    try:
+        html_content = load_email_template(template_path)
+        return HTMLResponse(content=html_content, status_code=200)
+    except FileNotFoundError:
+        logging.error(f"Email template not found at {template_path}")
+        raise HTTPException(status_code=500, detail="Email template not found")
+
+
 @user_router.get("/verify", status_code=302)
-def verify_user_mail(token: str, db: Session = Depends(get_db)):
+@user_router.get("/verify/reset-password", status_code=302)
+def verify_user_mail(
+    token: str, db: Session = Depends(get_db), request: Request = None
+):
     """
-    Verify a user's email using the verification token.
+    Verify a user's email using the verification token, for either email verification or password reset.
     """
 
     token_data = check_token(token, "verify")
     user_mail = token_data.get("user_id")
+    # Determine if the request is for email verification or password reset based on the endpoint
+    is_reset_password = request.url.path.endswith("/reset-password")
+    redirect_url = (
+        f"ergodetect://reset-password?email={user_mail}"
+        if is_reset_password
+        else "ergodetect://login"
+    )
+    template_filename = (
+        "reset-password.html" if is_reset_password else "expire_link.html"
+    )
+
+    # Validate token and retrieve user email
 
     if not user_mail:
         raise HTTPException(
@@ -43,6 +73,7 @@ def verify_user_mail(token: str, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # Check if verification token is valid
     verify_link_valid = (
         db.query(VerifyMailToken)
         .filter(
@@ -56,28 +87,14 @@ def verify_user_mail(token: str, db: Session = Depends(get_db)):
         user.verified = True
         try:
             db.commit()
-            return RedirectResponse(url="ergodetect://login")
+            return RedirectResponse(url=redirect_url)
         except Exception as e:
             db.rollback()
             logging.error(f"Error during commit: {e}")
             raise HTTPException(status_code=500, detail="Error committing transaction")
     else:
-        template_path = os.path.abspath(
-            os.path.join(
-                os.path.dirname(__file__),
-                "..",
-                "..",
-                "auth",
-                "mail",
-                "expire_link.html",
-            )
-        )
-        try:
-            html_content = load_email_template(template_path)
-            return HTMLResponse(content=html_content, status_code=200)
-        except FileNotFoundError:
-            logging.error(f"Email template not found at {template_path}")
-            raise HTTPException(status_code=500, detail="Email template not found")
+        # Load the appropriate HTML template based on verification type
+        return load_expiration_template(template_filename)
 
 
 @user_router.get("/summary", response_model=SessionSummary)
