@@ -222,10 +222,10 @@ async def logout(
 
     # Step 3: Clear authentication cookies
     response.delete_cookie(
-        "access_token", httponly=False, path="/", samesite="none"
+        "access_token", httponly=False, path="/", samesite="none", secure=True
     )  # Secure should be True in production
     response.delete_cookie(
-        "refresh_token", httponly=False, path="/", samesite="none"
+        "refresh_token", httponly=False, path="/", samesite="none", secure=True
     )  # Secure should be True in production
 
     return {"message": "Logout Successful"}
