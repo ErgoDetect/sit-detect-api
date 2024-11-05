@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timedelta
 import time
 import json
@@ -16,7 +17,7 @@ from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 
 from api.procressData import processData
 from api.request_user import get_current_user
-from auth.token import LOCAL_TZ, get_current_time, get_sub_from_token
+from auth.token import LOCAL_TZ, get_current_time, get_sub_from_token, verify_token
 from api.detection import detection
 from database.database import get_db
 from database.model import SittingSession
@@ -85,6 +86,13 @@ async def landmark_results(
         await websocket.close(code=4003, reason="Access token missing")
         return
 
+    try:
+        verify_token(acc_token)
+    except HTTPException as e:
+        logger.error(f"WebSocket token verification failed: {e.detail}")
+        await websocket.close(code=4001, reason=e.detail)
+        return
+
     detector = None
     focal_length_values = None
     if focal_length_enabled:
@@ -119,6 +127,7 @@ async def landmark_results(
     sitting_session = None
     sitting_session_id = None
     response_counter = 0
+    is_session_initialized = False  # Flag to check if session is already initialized
     send_alert_time_track = {
         i: {"send": False, "last_time": None} for i in cooldown_periods
     }
@@ -137,11 +146,13 @@ async def landmark_results(
 
                     response_counter += 1
 
-                    if response_counter == 1 and not sitting_session:
-                        session_start = time.time()
-                        sitting_session, sitting_session_id = initialize_session(
-                            acc_token, db
-                        )
+                    if not is_session_initialized:
+                        if response_counter == 1 and not sitting_session:
+                            session_start = time.time()
+                            sitting_session, sitting_session_id = initialize_session(
+                                acc_token, db
+                            )
+                            is_session_initialized = True  # Mark session as initialized
 
                     if response_counter <= 15:
                         detector.set_correct_value(current_values)
@@ -164,21 +175,14 @@ async def landmark_results(
                             }
                         )
 
-                    # triggered_alerts = handle_alerts(
-                    #     detector, last_alert_time, cooldown_periods, alert_thresholds
-                    # )
                     triggered_alerts = should_send_alert(
                         detector.get_alert(), cooldown_periods, send_alert_time_track
                     )
 
-                    # ใช้ตัวนี้เพื่อ trigger
                     if triggered_alerts:
                         await websocket.send_json(
                             {"type": "triggered_alerts", "data": triggered_alerts}
                         )
-                    # await websocket.send_json(
-                    #     {"type": "triggered_alerts", "data": triggered_alerts}
-                    # )
 
                     if response_counter % 5 == 0:
                         update_sitting_session(
@@ -190,6 +194,7 @@ async def landmark_results(
             except WebSocketDisconnect:
                 if session_start:
                     logger.info(f"Session Duration: {response_counter} seconds")
+
                 else:
                     response_counter = 0
                     end_sitting_session(sitting_session, response_counter, db)
@@ -212,6 +217,7 @@ def initialize_session(acc_token, db):
     try:
         sitting_session_id = uuid.uuid4()
         user_id = get_sub_from_token(acc_token)
+
         date = datetime.now()
 
         db_sitting_session = SittingSession(

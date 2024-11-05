@@ -28,7 +28,7 @@ def generate_unique_user_id(length=21) -> str:
 
 
 ### User creation for email/password sign-up
-def create_user(db: Session, email: EmailStr, password: str, display_name: str) -> dict:
+def create_user(db: Session, email: EmailStr, password: str) -> dict:
     """
     Create a new EmailUser with a unique user ID, email, hashed password, and display name.
 
@@ -67,7 +67,6 @@ def create_user(db: Session, email: EmailStr, password: str, display_name: str) 
         user_id=user_id,
         email=email,
         password=hashed_password,  # Store hashed password in EmailUser
-        display_name=display_name,
         sign_up_method="email",
         verified=False,  # Default user is not verified on creation
     )
@@ -113,8 +112,7 @@ def create_user_google(db: Session, user_id: str, user_email: EmailStr) -> dict:
     # Create the Google user if it doesn't exist or is registered with a different method
     db_user = GoogleUser(
         user_id=user_id,
-        email=user_email,
-        display_name="Google User",  # Default display name, can be changed later
+        email=user_email,  # Default display name, can be changed later
         sign_up_method="google",
         verified=True,  # Google users are considered verified
     )

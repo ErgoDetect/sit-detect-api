@@ -3,10 +3,15 @@ from datetime import timedelta, datetime
 import json
 import logging
 import uuid
-from fastapi import APIRouter, Header, Request, Depends, Response, HTTPException
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi import APIRouter, Request, Depends, Response, HTTPException
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    StreamingResponse,
+)
 from sqlalchemy.orm import Session
 from google_auth_oauthlib.flow import Flow
+from auth.mail.mail_config import load_email_template
 from database.crud import (
     create_user_google,
     delete_user_sessions,
@@ -174,7 +179,14 @@ async def callback_from_google(
         # Commit all changes in a single transaction
         db.commit()
 
-        return {"message": "Callback successful"}
+        callback_template_path = os.path.abspath(
+            os.path.join(
+                os.path.dirname(__file__), "..", "..", "auth", "mail", "callback.html"
+            )
+        )
+        html_content = load_email_template(callback_template_path)
+
+        return HTMLResponse(content=html_content, status_code=200)
 
     except Exception as e:
         logger.exception("Error during Google token exchange: %s", e)

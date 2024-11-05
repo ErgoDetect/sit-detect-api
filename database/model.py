@@ -21,7 +21,6 @@ class User(Base):
 
     user_id = Column(String(21), primary_key=True, index=True)
     email = Column(String(100), unique=False, nullable=False)
-    display_name = Column(String(100), nullable=False)
     sign_up_method = Column(String(50), nullable=True)
     type = Column(String(50))  # Discriminator column
 

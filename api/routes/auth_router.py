@@ -108,9 +108,7 @@ async def sign_up(
 
     # Step 2: Hash the password and create the user
     try:
-        create_user(
-            db, signup_data.email, signup_data.password, signup_data.display_name
-        )
+        create_user(db, signup_data.email, signup_data.password)
     except Exception as e:
         db.rollback()
         logger.error(f"Error creating user: {e}")
@@ -224,10 +222,10 @@ async def logout(
 
     # Step 3: Clear authentication cookies
     response.delete_cookie(
-        "access_token", httponly=False, path="/", samesite="none"
+        "access_token", httponly=False, path="/", samesite="none", secure=True
     )  # Secure should be True in production
     response.delete_cookie(
-        "refresh_token", httponly=False, path="/", samesite="none"
+        "refresh_token", httponly=False, path="/", samesite="none", secure=True
     )  # Secure should be True in production
 
     return {"message": "Logout Successful"}
