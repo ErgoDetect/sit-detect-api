@@ -1,96 +1,247 @@
-import cv2
-import mediapipe as mp
-import numpy as np
+class detection:
+    def __init__(self, frame_per_second=1, correct_frame=15, focal_length=0):
+        # Constants
+        self.correct_frame = correct_frame
+        self.frame_per_second = frame_per_second
+        self.ear_threshold_low = 0.4
+        self.ear_threshold_high = 0.5
+        self.focal_length = focal_length
+        self.iris_diameter = 1.17  # cm
+        self.thoracic_threshold = 0.05
 
-# Initialize MediaPipe Face Mesh and Face Detection once and reuse them
-mp_face_mesh = mp.solutions.face_mesh
-mp_face_detection = mp.solutions.face_detection
-mp_drawing = mp.solutions.drawing_utils
+        # Initialization of variables
+        self.response_counter = 0
+        self.saved_values = []
+        self.correct_values = {}
+        self.ear_below_threshold = False
+        self.blink_detected = False
+        self.real_distance = None
+        self.latest_nearest_distance = 0
+        self.blink_stack = 0
+        self.sitting_stack = 0
+        self.distance_stack = 0
+        self.thoracic_stack = 0
+        self.not_sitting_stack = 0
 
-# Initialize face mesh and face detection with specific configurations
-face_mesh = mp_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidence=0.5)
-face_detection = mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.5)
+        self.blink_stack_threshold = 5
+        self.sitting_stack_threshold = 2700
+        self.distance_stack_threshold = 30
+        self.thoracic_stack_threshold = 2
+        self.not_sitting_stack_threshold = 5
+        self.time_limit_exceed_alert_stack_threshold = 7200
+        self.result = {
+            "blink_alert": False,
+            "sitting_alert": False,
+            "distance_alert": False,
+            "thoracic_alert": False,
+            "time_limit_exceed_alert": False,
+        }  # [blink_alert, sitting_alert, distance_alert, thoracic_alert]
 
-# Drawing specifications
-drawing_spec = mp_drawing.DrawingSpec(thickness=1, circle_radius=1)
+        self.timeline_result = {
+            "blink": [],
+            "sitting": [],
+            "distance": [],
+            "thoracic": [],
+        }
+        self.response_counter = 0
 
-def get_rotation_degree(image):
-    # Convert image to RGB and flip horizontally
-    image = cv2.cvtColor(cv2.flip(image, 1), cv2.COLOR_BGR2RGB)
-    
-    # Process the image with face mesh
-    results = face_mesh.process(image)
-    
-    # Get image dimensions
-    img_h, img_w, _ = image.shape
-    
-    # Prepare lists to store 2D and 3D points
-    face_3d = []
-    face_2d = []
-    
-    if results.multi_face_landmarks:
-        for face_landmarks in results.multi_face_landmarks:
-            for idx, lm in enumerate(face_landmarks.landmark):
-                if idx == 33 or idx == 263 or idx == 1 or idx == 61 or idx == 291 or idx == 199:
-                    # if idx == 1:
-                        # nose_2d = (lm.x * img_w, lm.y * img_h)
-                        # nose_3d = (lm.x * img_w, lm.y * img_h, lm.z * 3000)
+    def set_correct_value(self, input):
+        self.response_counter += 1
+        self.saved_values.append(input)
 
-                    x, y = int(lm.x * img_w), int(lm.y * img_h)
+        def average(values):
+            valid_values = [v for v in values if v is not None]
+            return sum(valid_values) / len(valid_values) if valid_values else None
 
-                    # Get the 2D Coordinates
-                    face_2d.append([x, y])
+        if self.response_counter == self.correct_frame:
+            self.correct_values = {
+                "shoulderPosition": average(
+                    [v["shoulderPosition"] for v in self.saved_values]
+                ),
+                "diameterRight": average(
+                    [v["diameterRight"] for v in self.saved_values]
+                ),
+                "diameterLeft": average([v["diameterLeft"] for v in self.saved_values]),
+            }
+            if (
+                self.correct_values["shoulderPosition"] + self.thoracic_threshold
+                >= 0.95
+            ):
+                self.correct_values["shoulderPosition"] = 0.95 - self.thoracic_threshold
 
-                    # Get the 3D Coordinates
-                    face_3d.append([x, y, lm.z])   
-            
-            # Convert to NumPy arrays
-            face_2d = np.array(face_2d, dtype=np.float64)
-            face_3d = np.array(face_3d, dtype=np.float64)
-            
-            # Camera matrix
-            focal_length = img_w
-            cam_matrix = np.array([[focal_length, 0, img_h / 2],
-                                   [0, focal_length, img_w / 2],
-                                   [0, 0, 1]])
-            
-            # Distortion parameters
-            dist_matrix = np.zeros((4, 1), dtype=np.float64)
-            
-            # Solve PnP to get rotation vector
-            success, rot_vec, trans_vec = cv2.solvePnP(face_3d, face_2d, cam_matrix, dist_matrix)
-            
-            # Get rotational matrix
-            rmat, _ = cv2.Rodrigues(rot_vec)
-            
-            # Decompose rotational matrix to get angles
-            angles, _, _, _, _, _ = cv2.RQDecomp3x3(rmat)
-            
-            # Calculate rotation degrees
-            x_angle = angles[0] * 360
-            y_angle = angles[1] * 360
-            z_angle = angles[2] * 360
-            return x_angle, y_angle, z_angle
-    
-    return None, None, None
+    def detect(self, input, faceDetect):
+        self.response_counter += 1
+        if self.response_counter > self.correct_frame:
+            if input["shoulderPosition"] is None:
+                self.thoracic_stack = 0
+            elif (
+                self.correct_values.get("shoulderPosition") is not None
+                and self.correct_values["shoulderPosition"] + self.thoracic_threshold
+                <= input["shoulderPosition"]
+            ):
+                self.thoracic_stack += 1
+            else:
+                self.thoracic_stack = 0
 
-def get_head_position(image):
-    # Convert image to RGB and flip horizontally
-    image = cv2.cvtColor(cv2.flip(image, 1), cv2.COLOR_BGR2RGB)
-    
-    # Process the image with face detection
-    results = face_detection.process(image)
-    
-    if results.detections:
-        for detection in results.detections:
-            bbox = detection.location_data.relative_bounding_box
-            return bbox.xmin, bbox.ymin
-    
-    return None, None
+            if faceDetect is False:
+                self.blink_stack = 0
+                self.distance_stack = 0
+                self.not_sitting_stack += 1
+                if (
+                    self.not_sitting_stack
+                    >= self.not_sitting_stack_threshold * self.frame_per_second
+                ):
+                    self.sitting_stack = 0
+                else:
+                    self.sitting_stack += 1
+            else:
+                self.sitting_stack += 1
 
-# Example usage:
-# image = cv2.imread("received_image.jpg")
-# rotation_degrees = get_rotation_degree(image)
-# head_position = get_head_position(image)
-# print("Rotation Degrees:", rotation_degrees)
-# print("Head Position:", head_position)
+                # Update distance_stack
+                diameter_right = input.get("diameterRight")
+                diameter_left = input.get("diameterLeft")
+                correct_diameter_right = self.correct_values.get("diameterRight")
+                correct_diameter_left = self.correct_values.get("diameterLeft")
+                self.latest_nearest_distance = max(
+                    diameter_right or self.latest_nearest_distance,
+                    diameter_left or self.latest_nearest_distance,
+                )
+
+                self.correct_distance = max(
+                    correct_diameter_right or 0, correct_diameter_left or 0
+                )
+
+                if self.focal_length == 0:
+                    if self.correct_distance and self.latest_nearest_distance:
+                        if self.correct_distance * 1.10 <= self.latest_nearest_distance:
+                            self.distance_stack += 1
+                        else:
+                            self.distance_stack = 0
+                else:
+                    if self.latest_nearest_distance:
+                        self.real_distance = round(
+                            (
+                                (self.focal_length * self.iris_diameter)
+                                / (self.latest_nearest_distance)
+                            )
+                            / 1000
+                        )
+                        print("Calculated real_distance:", self.real_distance)
+
+                        if self.real_distance > 40:  # 40 cm
+                            self.distance_stack += 1
+                        else:
+                            self.distance_stack = 0
+
+                # Update blink_stack
+                ear_left = input.get("eyeAspectRatioLeft")
+                ear_right = input.get("eyeAspectRatioRight")
+
+                if (ear_left is not None and ear_left <= self.ear_threshold_low) or (
+                    ear_right is not None and ear_right <= self.ear_threshold_low
+                ):
+                    self.ear_below_threshold = True
+                    self.blink_stack += 1
+                elif self.ear_below_threshold and (
+                    (ear_left is not None and ear_left >= self.ear_threshold_high)
+                    or (ear_right is not None and ear_right >= self.ear_threshold_high)
+                ):
+                    if not self.blink_detected:
+                        self.blink_stack = 0
+                        self.blink_detected = True
+                    self.ear_below_threshold = False
+                else:
+                    self.blink_detected = False
+                    self.blink_stack += 1
+
+            if self.blink_stack >= self.blink_stack_threshold * self.frame_per_second:
+                if self.result["blink_alert"] is False:
+                    self.timeline_result["blink"].append([])
+                    self.timeline_result["blink"][
+                        len(self.timeline_result["blink"]) - 1
+                    ].append(
+                        self.response_counter
+                        - (self.blink_stack_threshold * self.frame_per_second)
+                    )
+                self.result["blink_alert"] = True
+            else:
+                if self.result["blink_alert"] is True:
+                    self.timeline_result["blink"][
+                        len(self.timeline_result["blink"]) - 1
+                    ].append(self.response_counter)
+                self.result["blink_alert"] = False
+
+            if (
+                self.sitting_stack
+                >= self.sitting_stack_threshold * self.frame_per_second
+            ):
+                if self.result["sitting_alert"] is False:
+                    self.timeline_result["sitting"].append([])
+                    self.timeline_result["sitting"][
+                        len(self.timeline_result["sitting"]) - 1
+                    ].append(
+                        self.response_counter
+                        - (self.sitting_stack_threshold * self.frame_per_second)
+                    )
+                self.result["sitting_alert"] = True
+            else:
+                if self.result["sitting_alert"] is True:
+                    self.timeline_result["sitting"][
+                        len(self.timeline_result["sitting"]) - 1
+                    ].append(
+                        self.response_counter
+                        - (self.not_sitting_stack_threshold * self.frame_per_second)
+                    )
+                self.result["sitting_alert"] = False
+
+            if (
+                self.distance_stack
+                >= self.distance_stack_threshold * self.frame_per_second
+            ):
+                if self.result["distance_alert"] is False:
+                    self.timeline_result["distance"].append([])
+                    self.timeline_result["distance"][
+                        len(self.timeline_result["distance"]) - 1
+                    ].append(
+                        self.response_counter
+                        - (self.distance_stack_threshold * self.frame_per_second)
+                    )
+                self.result["distance_alert"] = True
+            else:
+                if self.result["distance_alert"] is True:
+                    self.timeline_result["distance"][
+                        len(self.timeline_result["distance"]) - 1
+                    ].append(self.response_counter)
+                self.result["distance_alert"] = False
+
+            if (
+                self.thoracic_stack
+                >= self.thoracic_stack_threshold * self.frame_per_second
+            ):
+                if self.result["thoracic_alert"] is False:
+                    self.timeline_result["thoracic"].append([])
+                    self.timeline_result["thoracic"][
+                        len(self.timeline_result["thoracic"]) - 1
+                    ].append(
+                        self.response_counter
+                        - (self.thoracic_stack_threshold * self.frame_per_second)
+                    )
+                self.result["thoracic_alert"] = True
+            else:
+                if self.result["thoracic_alert"] is True:
+                    self.timeline_result["thoracic"][
+                        len(self.timeline_result["thoracic"]) - 1
+                    ].append(self.response_counter)
+                self.result["thoracic_alert"] = False
+
+            if (
+                self.response_counter
+                >= self.time_limit_exceed_alert_stack_threshold * self.frame_per_second
+            ):
+                self.result["time_limit_exceed_alert"] = True
+
+    def get_timeline_result(self):
+        return self.timeline_result
+
+    def get_alert(self):
+        return self.result
