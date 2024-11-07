@@ -192,15 +192,11 @@ async def landmark_results(
                     logger.warning("Received message without 'data' key.")
 
             except WebSocketDisconnect:
-                if session_start:
-                    logger.info(f"Session Duration: {response_counter} seconds")
-
-                else:
-                    response_counter = 0
-                    end_sitting_session(sitting_session, response_counter, db)
-                    logger.info("WebSocket disconnected")
-                    break
-
+                logger.info(f"Session Duration: {response_counter} seconds")
+                end_sitting_session(sitting_session, response_counter, db)
+                response_counter = 0
+                logger.info("WebSocket disconnected")
+                break
             except json.JSONDecodeError as e:
                 logger.warning(f"Error decoding message JSON: {e}")
 
