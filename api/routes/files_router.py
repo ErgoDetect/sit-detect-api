@@ -1,5 +1,6 @@
 from datetime import datetime
 import logging
+import shutil
 from typing import List
 import uuid
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -106,23 +107,35 @@ async def upload_and_calibrate_images(
         upload_response = await receive_upload_images(files)
         logger.info("Images uploaded successfully.")
         image_paths = [Path(path) for path in upload_response["file_paths"]]
+        image_dir = image_paths[
+            0
+        ].parent  # Assuming all images are in the same directory
     except HTTPException as e:
         logger.error(f"Error in uploading images: {e.detail}")
         raise HTTPException(status_code=500, detail="Failed to upload images.")
 
-    # Step 2: Calibrate the camera using the saved images
-    calibration_data = calibrate_camera(image_paths)
-    if calibration_data is None:
-        logger.error("Calibration failed due to insufficient valid images.")
-        raise HTTPException(
-            status_code=400, detail="Calibration failed: No valid images found."
-        )
+    try:
+        # Step 2: Calibrate the camera using the saved images
+        calibration_data = calibrate_camera(image_paths)
+        if calibration_data is None:
+            logger.error("Calibration failed due to insufficient valid images.")
+            raise HTTPException(
+                status_code=400, detail="Calibration failed: No valid images found."
+            )
 
-    # Step 3: Return the calibration data
-    return {
-        "message": "Calibration successful",
-        "calibration_data": calibration_data,
-    }
+        # Step 3: Return the calibration data
+        return {
+            "message": "Calibration successful",
+            "calibration_data": calibration_data,
+        }
+
+    finally:
+        # Cleanup: Delete the image directory
+        try:
+            shutil.rmtree(image_dir)
+            logger.info("Image directory deleted successfully.")
+        except Exception as e:
+            logger.error(f"Error deleting image directory: {e}")
 
 
 @files_router.get("/download/{filename}")

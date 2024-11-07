@@ -5,7 +5,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-CHESSBOARD_SIZE = (9, 6)
+CHESSBOARD_SIZE = (8, 5)
 SQUARE_SIZE_MM = 20
 
 # Constant Object Points
