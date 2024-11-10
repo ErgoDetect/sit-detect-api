@@ -43,17 +43,19 @@ class detection:
             "distance": [],
             "thoracic": [],
         }
+
+        self.response_counter_for_correct_frame = 0
         self.response_counter = 0
 
     def set_correct_value(self, input):
-        self.response_counter += 1
+        self.response_counter_for_correct_frame += 1
         self.saved_values.append(input)
 
         def average(values):
             valid_values = [v for v in values if v is not None]
             return sum(valid_values) / len(valid_values) if valid_values else None
 
-        if self.response_counter == self.correct_frame:
+        if self.response_counter_for_correct_frame == self.correct_frame:
             self.correct_values = {
                 "shoulderPosition": average(
                     [v["shoulderPosition"] for v in self.saved_values]
@@ -71,7 +73,7 @@ class detection:
 
     def detect(self, input, faceDetect):
         self.response_counter += 1
-        if self.response_counter > self.correct_frame:
+        if self.response_counter_for_correct_frame >= self.correct_frame:
             if input["shoulderPosition"] is None:
                 self.thoracic_stack = 0
             elif (
