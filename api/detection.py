@@ -94,6 +94,7 @@ class detection:
                     >= self.not_sitting_stack_threshold * self.frame_per_second
                 ):
                     self.sitting_stack = 0
+                    self.not_sitting_stack = 0
                 else:
                     self.sitting_stack += 1
             else:
