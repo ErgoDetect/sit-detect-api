@@ -1,0 +1,40 @@
+# Bytecode / cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment (ถ้ามี)
+env/
+.venv/
+
+# IDE / Editor settings
+.vscode/
+.idea/
+*.swp
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+
+*.log
+*.sqlite3
+*.db
+
+
+
+.env.*
+!.env.example
+!.env.vault 
+
+test*
+*.jpg
+*.png
+*.jpeg
+
+# Calibration / temp output folders
+images/
+calibrate_result/
+
+alembic/versions/
+

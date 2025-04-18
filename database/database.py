@@ -2,9 +2,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
+import os
 
 # Database URL: Ensure sensitive data is managed securely
-DATABASE_URL = "postgresql://postgres:Admin1234@localhost/ergodb"
+DATABASE_URL = os.getenv("DATABASE_URL")
+
 
 # Create the SQLAlchemy engine
 engine = create_engine(

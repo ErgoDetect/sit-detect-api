@@ -1,17 +1,34 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
 
-env
-__pycache__*
+# MacOS
 .DS_Store
-testCamera.py
-test.py
-test.jpg
 
-#calibration
-images
-calibrate_result
+# Env / Secrets
+.env
+.env.*
+!.env.example       # <-- ไฟล์ตัวอย่างที่ควร commit ได้
+!.env.vault         # <-- ถ้าจำเป็นต้องใช้จริง
 
-.env*
-.flaskenv*
-!.env.project
-!.env.vault
+# Development / Test
+test*
+*.jpg
+*.png
+*.jpeg
 
+# Calibration / Temp folders
+images/
+calibrate_result/
+
+# Editor config (optional)
+.vscode/
+
+# Log / misc
+*.log
+*.sqlite3
+*.db
+
+
+env/
